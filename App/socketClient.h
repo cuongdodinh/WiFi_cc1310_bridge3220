@@ -5,7 +5,9 @@
 
 #include "simplelink.h"
 
-extern _u16 ping;
+extern _u16 g_ping;
+
+int SocketClientProcessRecv ();
 
 bool SocketClientConnect ();
 bool SocketClientPing();

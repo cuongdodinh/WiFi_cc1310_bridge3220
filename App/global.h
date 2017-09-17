@@ -3,6 +3,8 @@
 #ifndef APP_GLOBAL_H_
 #define APP_GLOBAL_H_
 
+#define APPLICATION_VERSION     13
+
 #include <stdbool.h>
 #include "platform.h"
 #include "uart_term.h"
@@ -54,10 +56,10 @@ extern e_AppStatusCodes g_appState;
 //TODO: DELETE******************************************/////////~~~~~~~~~~~~~~~
 #define MAX_BUFF_SIZE           1460
 #define SUCCESS                 0
-#define MAX_WAIT_RECV_MS           10 * 1000
 
 #define _u8 unsigned char
 #define _u16 unsigned short
+#define _u64 unsigned long
 
 extern bool sendInProgress;
 extern unsigned char g_buff[MAX_BUFF_SIZE+1];
@@ -65,6 +67,7 @@ extern _u8 macAddressVal[6];
 
 long Network_IF_GetHostIP( char* pcHostName,unsigned long * pDestinationIP );
 
-extern void BlinkLED(char period);
+void BlinkLED(char period);
+void RebootMCU();
 
 #endif /* APP_GLOBAL_H_ */

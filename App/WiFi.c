@@ -7,11 +7,7 @@
 #include "rom_map.h"
 #include "utils.h"
 
-//#include "uart_if.h"
-//#include "gpio_if.h"
-//#include "network_if.h"
 #include "wlan.h"
-//#include "common.h"
 
 #include "cc1310_interface.h"
 
@@ -19,29 +15,14 @@
 #include "socketClient.h"
 #include "socketProtocol.h"
 #include "WiFi.h"
-#include "OTA_Update.h" //TODO: DELETE
+#include "OTA_Update.h"
 #include "prcm.h"
-
-// HTTP Client lib
-//#include <http/client/httpcli.h>
-//#include <http/client/common.h>
 
 #define APListSize  4
 AP_Params_t APList [APListSize];
 
-
-//TODO: DELETE
-char acSendBuff[512];   // Buffer to send data
-//struct sockaddr_in addr;
-//HTTPCli_Struct g_cli;
-//HTTPCli_Struct g_cli2;
 #define HOST_NAME       "91.244.253.100"
 #define HOST_PORT       (90)
-
-#define PREFIX_BUFFER "/?sensor="
-#define POST_BUFFER "&value="
-#define POST_VALUE2 "&value2="
-#define POST_VALUE3 "&value3="
 
 //#define HOST_NAME2               "192.168.2.11"
 //#define HOST_PORT2               (80)
@@ -54,202 +35,6 @@ char acSendBuff[512];   // Buffer to send data
 
 bool ConnectToAP ();
 
-//----------------------------------------------------------------------------------------------------------------------------------
-void SendError()
-{
-//    GPIO_IF_LedOn(MCU_RED_LED_GPIO);
-//    MAP_UtilsDelay(2000000);
-//    GPIO_IF_LedOff(MCU_RED_LED_GPIO);
-}
-
-//TODO: DELETE
-//----------------------------------------------------------------------------------------------------------------------------------
-bool SendNumber (char* text, int len, int value)
-{
-/*    long lRetVal;
-
-     lRetVal = HTTPCli_connect(&g_cli, (struct sockaddr *)&addr, 0, NULL);
-     if (lRetVal < 0)
-     {
-         SendError();
-         SendNumber ("Error 2", strlen ("Error 2"), lRetVal);
-
-         return false;
-     }
-
-     char* pcBufLocation;
-
-      HTTPCli_Field fields[2] = {
-                                  {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
-                                  {NULL, NULL},
-                                };
-      //
-      // Set request fields
-      //
-      HTTPCli_setRequestFields(&g_cli, fields);
-
-      memset (acSendBuff, 0, strlen (acSendBuff));
-
-      pcBufLocation = acSendBuff;
-      strcpy(pcBufLocation, "/?text=");
-      pcBufLocation += strlen("/?text=");
-
-      memcpy (pcBufLocation, text, len);
-      pcBufLocation += len;
-
-      strcpy(pcBufLocation, ": ");
-      pcBufLocation += strlen(": ");
-
-      pcBufLocation += itoa (value, pcBufLocation);
-
-      //
-      // Make HTTP 1.1 GET request
-      //
-      lRetVal = HTTPCli_sendRequest(&g_cli, HTTPCli_METHOD_GET, acSendBuff, 0);
-
-
-      if (lRetVal < 0)
-      {
-          SendError();
-          SendNumber ("Error 3", strlen ("Error 3"), lRetVal);
-
-          return false;
-      }
-
-      HTTPCli_disconnect (&g_cli);*/
-
-      return true;
-}
-
-
-
-
-//TODO: DELETE
-//----------------------------------------------------------------------------------------------------------------------------------
-bool SendText (char* text, int len)
-{
-/*    if (g_appState != DEVICE_CONNECTED_AP)
-        return false;
-
-    long lRetVal;
-
-    lRetVal = HTTPCli_connect(&g_cli, (struct sockaddr *)&addr, 0, NULL);
-    if (lRetVal < 0)
-    {
-        SendError();
-        SendNumber ("Error 4", strlen ("Error 4"), lRetVal);
-
-        return false;
-    }
-
-    char* pcBufLocation;
-
-     HTTPCli_Field fields[2] = {
-                                 {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
-                                 {NULL, NULL},
-                               };
-     //
-     // Set request fields
-     //
-     HTTPCli_setRequestFields(&g_cli, fields);
-
-     memset (acSendBuff, 0, strlen (acSendBuff));
-
-     pcBufLocation = acSendBuff;
-     strcpy(pcBufLocation, "/?text=");
-     pcBufLocation += strlen("/?text=");
-
-     memcpy (pcBufLocation, text, len);
-
-     int s = 0;
-
-     for (s = 0; s < len; s++)
-     {
-         if (pcBufLocation[s] == '/')
-             pcBufLocation[s] = '.';
-         if (pcBufLocation[s] == '?')
-             pcBufLocation[s] = '.';
-         if (pcBufLocation[s] == '&')
-             pcBufLocation[s] = '.';
-     }
-
-     pcBufLocation += len;
-
-     //
-     // Make HTTP 1.1 GET request
-     //
-     lRetVal = HTTPCli_sendRequest(&g_cli, HTTPCli_METHOD_GET, acSendBuff, 0);
-
-
-     if (lRetVal < 0)
-     {
-         SendError();
-         SendNumber ("Error 5", strlen ("Error 5"), lRetVal);
-
-         return false;
-     }
-
-     HTTPCli_disconnect (&g_cli);*/
-
-     return true;
-}
-
-//*****************************************************************************
-//
-//! This function flush received HTTP response
-//!
-//! \param[in] cli - Instance of the HTTP connection
-//!
-//! \return o on success else -ve
-//!
-//*****************************************************************************
-/*static int FlushHTTPResponse(HTTPCli_Handle cli)
-{
-    const char *ids[2] = {
-                            HTTPCli_FIELD_NAME_CONNECTION, // App will get connection header value. all others will skip by lib
-                            NULL
-                         };
-    char  buf[128];
-    int id;
-    int len = 1;
-    bool moreFlag = 0;
-    char ** prevRespFilelds = NULL;
-
-
-    prevRespFilelds = HTTPCli_setResponseFields(cli, ids);
-
-    // Read response headers
-    while ((id = HTTPCli_getResponseField(cli, buf, sizeof(buf), &moreFlag))
-            != HTTPCli_FIELD_ID_END)
-    {
-        if(id == 0)
-        {
-            if(!strncmp(buf, "close", sizeof("close")))
-            {
-                UART_PRINT("Connection terminated by server\n\r");
-            }
-        }
-    }
-
-    HTTPCli_setResponseFields(cli, (const char **)prevRespFilelds);
-
-    while(1)
-    {
-        len = HTTPCli_readResponseBody(cli, buf, sizeof(buf) - 1, &moreFlag);
-        ASSERT_ON_ERROR(len);
-
-        if ((len - 2) >= 0 && buf[len - 2] == '\r' && buf [len - 1] == '\n')
-        {
-            break;
-        }
-
-        if(!moreFlag)
-        {
-            break;
-        }
-    }
-    return SUCCESS;
-}*/
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 _i16 HttpClient_Connect(_u8 *ServerName, _u16 Port)
@@ -407,7 +192,6 @@ bool GetJpg()
     UART_PRINT (buff);
     SocketClientSendLog((char*) buff, LogPart_ClientRuntime, LogType_HTTPGetHeader);
 
-
     char *fileName = "Cottage. Cam 1";
     int packetLen = HeaderOffsetsSecondEnd + 8 + strlen ((char*) fileName); //+Type(1) + SubType(1) + FileType (1) + FileSubType (4) + StrLen (1)
     uint8_t *socketSendBuff = malloc (packetLen);
@@ -439,10 +223,9 @@ bool GetJpg()
         {
             break;
         }
-
         partNum++;
 
-        UART_PRINT("partNum: %d    len: %d\n\r", partNum, len);
+//        UART_PRINT("partNum: %d    len: %d\n\r", partNum, len);
 
         packetLen = HeaderOffsetsSecondEnd + 2 + len; //+Type(1) + SubType(1) + data
         socketSendBuff = malloc (packetLen);
@@ -490,308 +273,6 @@ bool GetJpg()
     sl_Close(httpSockID);
 
     return true;
-
-}
-
-/*!
-\brief          This function handles general events
-\param[in]      pDevEvent - Pointer to stucture containing general event info
-\return         None
-*/
-void SimpleLinkGeneralEventHandler(SlDeviceEvent_t *pDevEvent)
-{
-    if(NULL == pDevEvent) return;
-    switch(pDevEvent->Id)
-    {
-        default:
-        {
-            if (pDevEvent->Data.Error.Code == SL_ERROR_LOADING_CERTIFICATE_STORE)
-            {
-                /* Ignore it */
-                UART_PRINT("GeneralEventHandler: EventId=%d, SL_ERROR_LOADING_CERTIFICATE_STORE, ErrorCode=%d\r\n", pDevEvent->Id, pDevEvent->Data.Error.Code);
-                break;
-            }
-            UART_PRINT("Received unexpected General Event with code [0x%x]\n\r", pDevEvent->Data.Error.Code);
-//            SignalEvent(APP_EVENT_ERROR);
-        }
-        break;
-    }
-}
-
-/*
- *  \brief      This function handles WLAN async events
- *  \param[in]  pWlanEvent - Pointer to the structure containg WLAN event info
- *  \return     None
- */
-void SimpleLinkWlanEventHandler(SlWlanEvent_t *pWlanEvent)
-{
-    SlWlanEventData_u *pWlanEventData = NULL;
-
-    if (NULL == pWlanEvent) return;
-
-    pWlanEventData = &pWlanEvent->Data;
-
-    switch(pWlanEvent->Id)
-    {
-        case SL_WLAN_EVENT_CONNECT:
-        {
-            UART_PRINT("STA connected to AP %s, ", pWlanEvent->Data.Connect.SsidName);
-
-            UART_PRINT("BSSID is %02x:%02x:%02x:%02x:%02x:%02x\n\r",
-                    pWlanEvent->Data.Connect.Bssid[0],
-                    pWlanEvent->Data.Connect.Bssid[1],
-                    pWlanEvent->Data.Connect.Bssid[2],
-                    pWlanEvent->Data.Connect.Bssid[3],
-                    pWlanEvent->Data.Connect.Bssid[4],
-                    pWlanEvent->Data.Connect.Bssid[5]);
-
-//            SignalEvent(APP_EVENT_CONNECTED);
-        }
-        break;
-
-        case SL_WLAN_EVENT_DISCONNECT:
-        {
-            SlWlanEventDisconnect_t *pDiscntEvtData = NULL;
-            pDiscntEvtData = &pWlanEventData->Disconnect;
-
-            /** If the user has initiated 'Disconnect' request, 'ReasonCode'
-              * is SL_USER_INITIATED_DISCONNECTION
-              */
-            if(SL_WLAN_DISCONNECT_USER_INITIATED == pDiscntEvtData->ReasonCode)
-            {
-                UART_PRINT("Device disconnected from the AP on request\n\r");
-            }
-            else
-            {
-                UART_PRINT("Device disconnected from the AP on an ERROR\n\r");
-            }
-            //if (ConnectToAP() == false)
-                RebootMCU();
-
-//            SignalEvent(APP_EVENT_DISCONNECT);
-        }
-        break;
-
-        case SL_WLAN_EVENT_PROVISIONING_PROFILE_ADDED:
-            UART_PRINT(" [Provisioning] Profile Added: SSID: %s\r\n", pWlanEvent->Data.ProvisioningProfileAdded.Ssid);
-            if(pWlanEvent->Data.ProvisioningProfileAdded.ReservedLen > 0)
-            {
-                UART_PRINT(" [Provisioning] Profile Added: PrivateToken:%s\r\n", pWlanEvent->Data.ProvisioningProfileAdded.Reserved);
-            }
-            break;
-
-        case SL_WLAN_EVENT_PROVISIONING_STATUS:
-        {
-                switch(pWlanEvent->Data.ProvisioningStatus.ProvisioningStatus)
-                {
-                case SL_WLAN_PROVISIONING_GENERAL_ERROR:
-                case SL_WLAN_PROVISIONING_ERROR_ABORT:
-                case SL_WLAN_PROVISIONING_ERROR_ABORT_INVALID_PARAM:
-                case SL_WLAN_PROVISIONING_ERROR_ABORT_HTTP_SERVER_DISABLED:
-                case SL_WLAN_PROVISIONING_ERROR_ABORT_PROFILE_LIST_FULL:
-                case SL_WLAN_PROVISIONING_ERROR_ABORT_PROVISIONING_ALREADY_STARTED:
-                    UART_PRINT(" [Provisioning] Provisioning Error status=%d\r\n",pWlanEvent->Data.ProvisioningStatus.ProvisioningStatus);
-//                      SignalEvent(APP_EVENT_ERROR);
-                    break;
-
-                case SL_WLAN_PROVISIONING_CONFIRMATION_STATUS_FAIL_NETWORK_NOT_FOUND:
-                    UART_PRINT(" [Provisioning] Profile confirmation failed: network not found\r\n");
-//                      SignalEvent(APP_EVENT_PROVISIONING_STARTED);
-                    break;
-
-                case SL_WLAN_PROVISIONING_CONFIRMATION_STATUS_FAIL_CONNECTION_FAILED:
-                    UART_PRINT(" [Provisioning] Profile confirmation failed: Connection failed\r\n");
-//                      SignalEvent(APP_EVENT_PROVISIONING_STARTED);
-                    break;
-
-                case SL_WLAN_PROVISIONING_CONFIRMATION_STATUS_CONNECTION_SUCCESS_IP_NOT_ACQUIRED:
-                    UART_PRINT(" [Provisioning] Profile confirmation failed: IP address not acquired\r\n");
-//                      SignalEvent(APP_EVENT_PROVISIONING_STARTED);
-                    break;
-
-                case SL_WLAN_PROVISIONING_CONFIRMATION_STATUS_SUCCESS_FEEDBACK_FAILED:
-                    UART_PRINT(" [Provisioning] Profile Confirmation failed (Connection Success, feedback to Smartphone app failed)\r\n");
-//                      SignalEvent(APP_EVENT_PROVISIONING_STARTED);
-                    break;
-
-                case SL_WLAN_PROVISIONING_CONFIRMATION_STATUS_SUCCESS:
-                    UART_PRINT(" [Provisioning] Profile Confirmation Success!\r\n");
- //                   SignalEvent(APP_EVENT_PROVISIONING_SUCCESS);
-                    break;
-
-                case SL_WLAN_PROVISIONING_AUTO_STARTED:
-                    UART_PRINT(" [Provisioning] Auto-Provisioning Started\r\n");
-//                      SignalEvent(APP_EVENT_PROVISIONING_STARTED);
-                      break;
-
-                case SL_WLAN_PROVISIONING_STOPPED:
-                    UART_PRINT("\r\n Provisioning stopped:");
-//                    UART_PRINT(" Current Role: %d\r\n",[pWlanEvent->Data.ProvisioningStatus.Role);
-                    if(ROLE_STA == pWlanEvent->Data.ProvisioningStatus.Role)
-                    {
-//                        UART_PRINT("                       WLAN Status: %d\r\n",pWlanEvent->Data.ProvisioningStatus.WlanStatus);
-
-                        if(SL_WLAN_STATUS_CONNECTED == pWlanEvent->Data.ProvisioningStatus.WlanStatus)
-                        {
-
-                            UART_PRINT("                       Connected to SSID: %s\r\n",pWlanEvent->Data.ProvisioningStatus.Ssid);
-//                              SignalEvent(APP_EVENT_PROVISIONING_STOPPED);
-                        }
-                        else
-                        {
-//                              SignalEvent(APP_EVENT_PROVISIONING_STARTED);
-                        }
-                    }
-
-//                    g_StopInProgress = 0;
-                    break;
-
-                case SL_WLAN_PROVISIONING_SMART_CONFIG_SYNCED:
-                    UART_PRINT(" [Provisioning] Smart Config Synced!\r\n");
-                    break;
-
-                case SL_WLAN_PROVISIONING_SMART_CONFIG_SYNC_TIMEOUT:
-                    UART_PRINT(" [Provisioning] Smart Config Sync Timeout!\r\n");
-                    break;
-
-                case SL_WLAN_PROVISIONING_CONFIRMATION_WLAN_CONNECT:
-                    UART_PRINT(" [Provisioning] Profile confirmation: WLAN Connected!\r\n");
-                    break;
-
-                case SL_WLAN_PROVISIONING_CONFIRMATION_IP_ACQUIRED:
-                    UART_PRINT(" [Provisioning] Profile confirmation: IP Acquired!\r\n");
-                    break;
-
-                case SL_WLAN_PROVISIONING_EXTERNAL_CONFIGURATION_READY:
-                    UART_PRINT(" [Provisioning] External configuration is ready! \r\n");
-                    break;
-
-                default:
-                    UART_PRINT(" [Provisioning] Unknown Provisioning Status: %d\r\n",pWlanEvent->Data.ProvisioningStatus.ProvisioningStatus);
-                    break;
-                }
-        }
-    }
-
-
-}
-
-/*!
- *  \brief      This function handles resource request
- *  \param[in]  pNetAppRequest - Contains the resource requests
- *  \param[in]  pNetAppResponse - Should be filled by the user with the
- *                                relevant response information
- *  \return     None
- */
-void SimpleLinkNetAppRequestHandler(SlNetAppRequest_t  *pNetAppRequest,
-                                    SlNetAppResponse_t *pNetAppResponse)
-{
-    /* Unused in this application */
-    UART_PRINT("Unexpected NetApp request event \n\r");
-//    SignalEvent(APP_EVENT_ERROR);
-}
-
-/*!
- *  \brief       The Function Handles the Fatal errors
- *  \param[in]  pFatalErrorEvent - Contains the fatal error data
- *  \return     None
- */
-void SimpleLinkFatalErrorEventHandler(SlDeviceFatal_t *slFatalErrorEvent)
-{
-
-            UART_PRINT("[ERROR] - FATAL ERROR: Abort NWP event detected: AbortType=%d, AbortData=0x%x\n\r",slFatalErrorEvent->Data.DeviceAssert.Code,slFatalErrorEvent->Data.DeviceAssert.Value);
-
-}
-
-
-/*!
- *  \brief      This function gets triggered when HTTP Server receives
- *              application defined GET and POST HTTP tokens.
- *  \param[in]  pHttpServerEvent Pointer indicating http server event
- *  \param[in]  pHttpServerResponse Pointer indicating http server response
- *  \return     None
- */
-void SimpleLinkHttpServerEventHandler(SlNetAppHttpServerEvent_t *pHttpEvent,
-                                  SlNetAppHttpServerResponse_t *pHttpResponse)
-{
-    /* Unused in this application */
-    UART_PRINT("Unexpected HTTP server event \n\r");
-
-}
-
-
-
-
-
-/*!
- *  \brief      This function handles socket events indication
- *  \param[in]  pSock - Pointer to the stucture containing socket event info
- *  \return     None
- */
-void SimpleLinkSockEventHandler(SlSockEvent_t *pSock)
-{
-
-}
-
-void SimpleLinkNetAppRequestMemFreeEventHandler (uint8_t *buffer)
-{
-  // do nothing...
-}
-
-void SimpleLinkNetAppRequestEventHandler(SlNetAppRequest_t *pNetAppRequest, SlNetAppResponse_t *pNetAppResponse)
-{
-  // do nothing...
-}
-
-
-//--------------------------------------------------------------------------------------------------------------------------
-/*!
- *  \brief      This function handles network events such as IP acquisition, IP
- *              leased, IP released etc.
- * \param[in]   pNetAppEvent - Pointer to the structure containing acquired IP
- * \return      None
- */
-void SimpleLinkNetAppEventHandler(SlNetAppEvent_t *pNetAppEvent)
-{
-    SlNetAppEventData_u *pNetAppEventData = NULL;
-
-    if(NULL == pNetAppEvent)
-        return;
-
-    pNetAppEventData = &pNetAppEvent->Data;
-
-    switch(pNetAppEvent->Id)
-    {
-        case SL_NETAPP_EVENT_IPV4_ACQUIRED:
-        {
-            UART_PRINT("IPv4 acquired: IP = %d.%d.%d.%d\n\r",\
-                (uint8_t)SL_IPV4_BYTE(pNetAppEventData->IpAcquiredV4.Ip,3),\
-                (uint8_t)SL_IPV4_BYTE(pNetAppEventData->IpAcquiredV4.Ip,2),\
-                (uint8_t)SL_IPV4_BYTE(pNetAppEventData->IpAcquiredV4.Ip,1),\
-                (uint8_t)SL_IPV4_BYTE(pNetAppEventData->IpAcquiredV4.Ip,0));
-            UART_PRINT("Gateway = %d.%d.%d.%d\n\r",\
-                (uint8_t)SL_IPV4_BYTE(pNetAppEventData->IpAcquiredV4.Gateway,3),\
-                (uint8_t)SL_IPV4_BYTE(pNetAppEventData->IpAcquiredV4.Gateway,2),\
-                (uint8_t)SL_IPV4_BYTE(pNetAppEventData->IpAcquiredV4.Gateway,1),\
-                (uint8_t)SL_IPV4_BYTE(pNetAppEventData->IpAcquiredV4.Gateway,0));
-        }
-        break;
-
-        case SL_NETAPP_EVENT_IPV4_LOST:
-        case SL_NETAPP_EVENT_DHCP_IPV4_ACQUIRE_TIMEOUT:
-        {
-            UART_PRINT("IPv4 lost Id or timeout, Id [0x%x]!!!\n\r", pNetAppEvent->Id);
-        }
-        break;
-
-        default:
-        {
-            UART_PRINT("Unexpected NetApp event with Id [0x%x] \n\r", pNetAppEvent->Id);
-        }
-        break;
-    }
-
-    g_lastSlEvent = *pNetAppEvent;
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -883,8 +364,6 @@ bool ConnectToAP ()
                 {
                     UART_PRINT ("%d:  %d   %s   \n\r", loop,g_lastSlEvent.Id, APList[s1].ssid);
 
-
-//                    if (IS_IP_ACQUIRED(Network_IF_CurrentMCUState()))
                     if (g_lastSlEvent.Id == SL_NETAPP_EVENT_IPV4_ACQUIRED)
                     {
                         _u16 macAddressLen = 6;
@@ -986,34 +465,10 @@ long Network_IF_GetHostIP( char* pcHostName,unsigned long * pDestinationIP )
 void RebootMCU()
 {
     UART_PRINT("RebootMCU() \n\r");
-//    return;
-  //
-  // Configure hibernate RTC wakeup
-  //
-  PRCMHibernateWakeupSourceEnable(PRCM_HIB_SLOW_CLK_CTR);
 
-  //
-  // Delay loop
-  //
-  MAP_UtilsDelay(8000000);
+    sl_Stop(SL_STOP_TIMEOUT );
 
-  //
-  // Set wake up time
-  //
-  PRCMHibernateIntervalSet(330);
-
-  //
-  // Request hibernate
-  //
-  PRCMHibernateEnter();
-
-  //
-  // Control should never reach here
-  //
-  while(1)
-  {
-
-  }
+    PRCMHibernateCycleTrigger();
 }
 
 
@@ -1033,7 +488,27 @@ void* WiFi_Task(void *pvParameters)
 //    GPIO_IF_LedOn(MCU_ORANGE_LED_GPIO);
 
     FillAPList ();
-    ConnectToAP ();
+    if (ConnectToAP () == false)
+        RebootMCU();
+    else
+    {
+        if (Ota_GetPendingCommitState() == true)
+        {
+            UART_PRINT("[OTA] committing new ota download... \n\r");
+            if (Ota_Commit() < 0)
+            {
+                UART_PRINT("[Local ota task] failed to commit new download, reverting to previous copy by reseting the device \n\r");
+                RebootMCU();
+
+                return 0;
+            }
+            UART_PRINT("[OTA] commit succeeded \n\r");
+
+            /* need to stop the WDT so MCU is not reset */
+            PRCMPeripheralReset(PRCM_WDT);
+        }
+    }
+
 
 //    StartBlinkTimer();
 
@@ -1048,16 +523,6 @@ void* WiFi_Task(void *pvParameters)
 
     g_appState = DEVICE_CONNECTED_AP;
 
-    char text[] = "WIFI Cam started      ";
-
-//    itoa (APPLICATION_VERSION, &text[18]);
-
-    SendText (text, sizeof (text));
-
-    sendInProgress = true;
-    GetJpg();
-    sendInProgress = false;
-
     Platform_Sleep(200);
 
     int aliveSendPeriodMS = 5 * 100;
@@ -1068,6 +533,9 @@ void* WiFi_Task(void *pvParameters)
 
     while (1)
     {
+        if (SocketClientProcessRecv () < 0)
+            RebootMCU();
+
         if (messageCount == 0)
         {
             Platform_Sleep(10);
@@ -1078,11 +546,7 @@ void* WiFi_Task(void *pvParameters)
             {
                 lastAliveSendMS = 0;
 
- //               if (!(IS_CONNECTED (Network_IF_CurrentMCUState())))
-   //                 RebootMCU();
-
                 SocketClientPing();
-
 
                 char sensorMac [8];
                 sensorMac[0] = 0x00;
@@ -1094,27 +558,15 @@ void* WiFi_Task(void *pvParameters)
                 sensorMac[6] = 0xAE;
                 sensorMac[7] = 0x44;
 
-                SocketClientSendSensorData (sensorMac, (float) ping, 0);
-
-/*                lRetVal = HTTPCli_connect(&g_cli, (struct sockaddr *)&addr, 0, NULL);
-                if (lRetVal < 0)
-                    RebootMCU();
-
-                SendSensorData (wifiAliveSensorIndex, 1, 0, 0);
-
-                HTTPCli_disconnect (&g_cli);*/
+                SocketClientSendSensorData (sensorMac, (float) g_ping, 0);
             }
 
             if (lastJpgSendMS > jpgSendPeriodMS)
             {
                 lastJpgSendMS = 0;
 
-                sendInProgress = true;
-                if (GetJpg() == false)
-                    RebootMCU();
-
-
-                sendInProgress = false;
+//                if (GetJpg() == false)
+//                    RebootMCU();
 
 //                osi_Sleep(10 * 1000);
 
@@ -1145,7 +597,6 @@ void* WiFi_Task(void *pvParameters)
             messageCount--;
         }
     }
-//    HTTPCli_destruct(&cli);
 }
 
 

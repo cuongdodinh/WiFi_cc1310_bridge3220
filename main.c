@@ -31,9 +31,9 @@
 #include "uart.h"
 #include "uart_term.h"
 
+#include "App/global.h"
 #include "App/cc1310_interface.h"
 #include "App/OTA_Update.h"
-#include "App/global.h"
 #include <App/appUtils.h>
 #include "App/WiFi.h"
 
