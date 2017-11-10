@@ -36,10 +36,13 @@
 #include "App/OTA_Update.h"
 #include <App/appUtils.h>
 #include "App/WiFi.h"
+#include "App/HAPServer.h"
+#include "App/socketClient.h"
 
 
 #include <ti/drivers/net/wifi/simplelink.h>
 #include <ti/drivers/SPI.h>
+#include <ti/drivers/Timer.h>
 #include "platform.h"
 
 
@@ -52,6 +55,7 @@ extern void (* const g_pfnVectors[])(void);
 unsigned long g_ulTimerInts;   //  Variable used in Timer Interrupt Handler
 char g_BlinkCounter = 0;
 _u8 macAddressVal[6];
+sem_t HAPInitSem, HAPStopSem, WiFiConnectSem, btnSem;
 
 
 e_AppStatusCodes g_appState = DEVICE_STARTED;
@@ -202,17 +206,48 @@ void AsyncEvtTimerIntHandler(sigval val)
 //    SignalEvent(APP_EVENT_TIMEOUT);
 }
 
+#define DEBOUNCETIME 200 /* milliseconds */
+uint32_t prevTicks = 0xFFFF;
+uint32_t curTicks, msPeriod;
+
+//-------------------------------------------------------------------------------------------------------------------------------------
+void gpioButtonFxn0(uint_least8_t index)
+{
+    curTicks = ClockP_getSystemTicks();
+    msPeriod = ClockP_getSystemTickPeriod() / 1000;
+
+    if ((curTicks - prevTicks) >= (DEBOUNCETIME/msPeriod)) {
+        if (HAPEngineHandle) {
+            sem_post(&btnSem);
+        }
+    }
+    prevTicks = curTicks;
+    GPIO_clearInt(Board_BUTTON0);
+}
+
+int timeSinceStartup = 0; //in seconds
+
+//-------------------------------------------------------------------------------------------------------------------------------------
+void timerCallback(Timer_Handle myHandle)
+{
+    timeSinceStartup += 5;
+}
+
 //-------------------------------------------------------------------------------------------------------------------------------------
 void * mainThread( void *pvParameters )
 {
     uint32_t RetVal ;
     pthread_attr_t      pAttrs;
     pthread_attr_t      pAttrs_spawn;
+    pthread_t HAPServerThread;
     struct sched_param  priParam;
     struct timespec     ts = {0};
 
     Board_initGPIO();
     SPI_init();
+    I2C_init();
+    Timer_init();
+
 
  /* init the platform code..*/
     Platform_Init();
@@ -221,6 +256,13 @@ void * mainThread( void *pvParameters )
     ///Platform_TimeoutStart(&pCtx->PlatformTimeout_Led, LED_TOGGLE_TIMEOUT);
 
     GPIO_write(Board_LED0, Board_LED_ON);
+
+    GPIO_setCallback(Board_BUTTON0, gpioButtonFxn0);
+
+    sem_init(&HAPInitSem, 0, 0);
+    sem_init(&HAPStopSem, 0, 0);
+    sem_init(&WiFiConnectSem, 0, 0);
+    sem_init(&btnSem, 0, 0);
 
 
     /* init Terminal, and print App name */
@@ -238,30 +280,43 @@ void * mainThread( void *pvParameters )
     priParam.sched_priority = SPAWN_TASK_PRIORITY;
     RetVal = pthread_attr_setschedparam(&pAttrs_spawn, &priParam);
     RetVal |= pthread_attr_setstacksize(&pAttrs_spawn, TASK_STACK_SIZE);
+    RetVal |= pthread_create(&g_spawn_thread, &pAttrs_spawn, sl_Task, NULL);
 
-    RetVal = pthread_create(&g_spawn_thread, &pAttrs_spawn, sl_Task, NULL);
-
-    if(RetVal)
-    {
-        while(1);
-    }
+    LOG_NON_ZERO (RetVal);
 
     pthread_attr_init(&pAttrs);
     priParam.sched_priority = 1;
     RetVal = pthread_attr_setschedparam(&pAttrs, &priParam);
     RetVal |= pthread_attr_setstacksize(&pAttrs, TASK_STACK_SIZE);
+    RetVal |= pthread_create(&g_WiFi_thread, &pAttrs, WiFi_Task, NULL);
 
-    if(RetVal)
-    {
-        while(1);    /* error handling */
-    }
+    LOG_NON_ZERO (RetVal);
 
-    RetVal = pthread_create(&g_WiFi_thread, &pAttrs, WiFi_Task, NULL);
+    /* Create thread for HAP server */
+    pthread_attr_init(&pAttrs);
+    priParam.sched_priority = 9;
+    RetVal = pthread_attr_setschedparam(&pAttrs, &priParam);
+    RetVal |= pthread_attr_setstacksize(&pAttrs, (5 * 1024));
+    RetVal |= pthread_create(&HAPServerThread, &pAttrs, HAPServer_Task, NULL);
 
-    if(RetVal)
-    {
-        while(1);
-    }
+    LOG_NON_ZERO (RetVal);
+
+    Timer_Handle timer0;
+    Timer_Params paramsT;
+
+    Timer_Params_init(&paramsT);
+    paramsT.period = 5000000;
+    paramsT.periodUnits = Timer_PERIOD_US;
+    paramsT.timerMode = Timer_CONTINUOUS_CALLBACK;
+    paramsT.timerCallback = timerCallback;
+
+    timer0 = Timer_open(Board_TIMER0, &paramsT);
+
+    if (timer0 == NULL)
+        LOG_ERROR (timer0);
+
+    if (Timer_start(timer0) == Timer_STATUS_ERROR)
+        LOG_ERROR (timer0);
 
     return(0);
 }

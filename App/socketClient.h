@@ -17,5 +17,6 @@ bool SocketClientSendPacket (_u8 *socketSendBuff, int packetLen);
 bool SocketClientSendLog(char* text, _u8 logPart, _u8 logType);
 bool SocketClientSendSensorData (char* sensorMac, float sensorValue1, float sensorValue2);
 void LogError (const char *pcFormat, ...);
+void Log (const char *pcFormat, ...);
 
 #endif /* APP_SOCKETCLIENT_H_ */

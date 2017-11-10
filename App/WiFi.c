@@ -17,6 +17,7 @@
 #include "WiFi.h"
 #include "OTA_Update.h"
 #include "prcm.h"
+#include "HAPServer.h"
 
 #define APListSize  4
 AP_Params_t APList [APListSize];
@@ -25,11 +26,13 @@ AP_Params_t APList [APListSize];
 #define HOST_PORT       (90)
 
 //#define HOST_NAME2               "192.168.2.11"
+//#define HOST_NAME3               "192.168.2.12"
 //#define HOST_PORT2               (80)
 //#define PREFIX_BUFFER2           "/snap.jpg"
 #define HOST_NAME2               "91.244.253.100"
+#define HOST_NAME3               "91.244.253.100"
 #define HOST_PORT2               (90)
-#define PREFIX_BUFFER2           "/1.jpg"
+#define PREFIX_BUFFER2           "/2.jpg"
 
 #define SL_STOP_TIMEOUT         200
 
@@ -158,9 +161,9 @@ _u8 socketRecvBuff [1500];
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 
 //--------------------------------------------------------------------------------------------------------------------------
-bool GetJpg()
+bool GetJpg(_u8 *serverName, _u8 fileSubType)
 {
-    _u8 serverName[] = HOST_NAME2;
+//    _u8 serverName[] = HOST_NAME2;
     _i16 httpSockID = HttpClient_Connect(serverName, HOST_PORT2);
 
     if (httpSockID < 0)
@@ -200,6 +203,7 @@ bool GetJpg()
     socketSendBuff [HeaderOffsetsSecondEnd + 1] = PSubType_FileStart;
     socketSendBuff [HeaderOffsetsSecondEnd + 2] = 1;
     memset (&socketSendBuff [HeaderOffsetsSecondEnd + 3], 0, 4);
+    socketSendBuff [HeaderOffsetsSecondEnd + 3] = fileSubType;
 
     socketSendBuff [HeaderOffsetsSecondEnd + 7] = strlen ((char*)fileName);
 
@@ -309,6 +313,13 @@ bool ConnectToAP ()
 
 //    LedTimerConfigNStart();
 
+    int s;
+    int s1;
+    SlWlanNetworkEntry_t netEntries[20];
+    _i16 resultsCount;
+//    while(1)
+//    {
+
     _u8 policy = 1;
 
     _u16 scanInterval = 600;
@@ -318,8 +329,7 @@ bool ConnectToAP ()
     // delay 1 second to verify scan is started
     Platform_Sleep(1000);
 
-    SlWlanNetworkEntry_t netEntries[20];
-    _i16 resultsCount = sl_WlanGetNetworkList (0, 20, &netEntries[0]);
+    resultsCount = sl_WlanGetNetworkList (0, 20, &netEntries[0]);
 
     if (resultsCount == 0)
     {
@@ -327,8 +337,6 @@ bool ConnectToAP ()
         return false;
     }
 
-    int s;
-    int s1;
     SlWlanNetworkEntry_t temp;
 
     for(s = 0; s < resultsCount; s++)
@@ -345,6 +353,7 @@ bool ConnectToAP ()
 
     for(s = 0; s < resultsCount; s++)
         UART_PRINT ("%s   %d\n\r", netEntries[s].Ssid, netEntries[s].Rssi);
+//    }
 
     bool connectSuccess = false;
 
@@ -465,10 +474,101 @@ long Network_IF_GetHostIP( char* pcHostName,unsigned long * pDestinationIP )
 void RebootMCU()
 {
     UART_PRINT("RebootMCU() \n\r");
+//    while (1){}
 
     sl_Stop(SL_STOP_TIMEOUT );
 
     PRCMHibernateCycleTrigger();
+}
+
+static bool lastPingSuccess = false;
+static int32_t lastPingIpAddress = 0;
+
+typedef struct pingTrackSensor {
+    int32_t ipAddr;
+    char sensorMac [8];
+    _u32 lastSeen; //in seconds
+} pingTrackSensor_t;
+
+int pingTrackSensorListCount = 3;
+int currPingTrackSensor = -1;
+pingTrackSensor_t pingTrackSensorList [3];
+
+//--------------------------------------------------------------------------------------------------------------------------
+void FillPingTrackSensorList ()
+{
+    pingTrackSensorList[0].sensorMac[0] = 0x02;
+    pingTrackSensorList[0].sensorMac[1] = 0x12;
+    pingTrackSensorList[0].sensorMac[2] = 0x4B;
+    pingTrackSensorList[0].sensorMac[3] = 0x00;
+    pingTrackSensorList[0].sensorMac[4] = 0x11;
+    pingTrackSensorList[0].sensorMac[5] = 0x6D;
+    pingTrackSensorList[0].sensorMac[6] = 0xAE;
+    pingTrackSensorList[0].sensorMac[7] = 0x44;
+    pingTrackSensorList[0].ipAddr = 0xC0A8028C;
+
+    pingTrackSensorList[1].sensorMac[0] = 0x03;
+    pingTrackSensorList[1].sensorMac[1] = 0x12;
+    pingTrackSensorList[1].sensorMac[2] = 0x4B;
+    pingTrackSensorList[1].sensorMac[3] = 0x00;
+    pingTrackSensorList[1].sensorMac[4] = 0x11;
+    pingTrackSensorList[1].sensorMac[5] = 0x6D;
+    pingTrackSensorList[1].sensorMac[6] = 0xAE;
+    pingTrackSensorList[1].sensorMac[7] = 0x44;
+    pingTrackSensorList[1].ipAddr = 0xC0A8028D;
+
+    pingTrackSensorList[2].sensorMac[0] = 0x04;
+    pingTrackSensorList[2].sensorMac[1] = 0x12;
+    pingTrackSensorList[2].sensorMac[2] = 0x4B;
+    pingTrackSensorList[2].sensorMac[3] = 0x00;
+    pingTrackSensorList[2].sensorMac[4] = 0x11;
+    pingTrackSensorList[2].sensorMac[5] = 0x6D;
+    pingTrackSensorList[2].sensorMac[6] = 0xAE;
+    pingTrackSensorList[2].sensorMac[7] = 0x44;
+    pingTrackSensorList[2].ipAddr = 0xC0A8028E;
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+void SimpleLinkPingReport(SlNetAppPingReport_t *pPingReport)
+{
+        if (pPingReport->PacketsReceived > 0)
+        {
+            UART_PRINT("[Ping]:  %u - %d \n\r", currPingTrackSensor, timeSinceStartup - pingTrackSensorList [currPingTrackSensor].lastSeen);
+
+            lastPingSuccess = true;
+        }
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+void PingSmartphone (int32_t ulIpAddr)
+{
+    SlNetAppPingReport_t      pingReport = {0};
+    SlNetAppPingCommand_t     pingCmd;
+    long lRetVal;
+
+    memset(&pingCmd, 0x0, sizeof(SlNetAppPingCommand_t));
+
+    /* Fill ping parameters with default values */
+    pingCmd.PingIntervalTime = 1000;
+    pingCmd.PingSize = 56;
+    pingCmd.PingRequestTimeout = 1500;
+    pingCmd.TotalNumberOfAttempts = 1;
+    pingCmd.Flags = 0;
+
+//    lRetVal = sl_NetAppDnsGetHostByName("192.168.2.140", strlen("192.168.2.140"), (unsigned long*)&ulIpAddr, SL_AF_INET);
+
+//    LOG_ON_ERROR (lRetVal);
+
+ //   ulIpAddr = sl_Htonl(ulIpAddr);
+
+    pingCmd.Ip = ulIpAddr;
+//    UART_PRINT ("ulIpAddr: %u\n\r", ulIpAddr);
+
+//    lRetVal = sl_NetAppPing(0, 0, 0);
+//    LOG_ON_ERROR (lRetVal);
+
+    lRetVal = sl_NetAppPing((SlNetAppPingCommand_t*)&pingCmd, SL_AF_INET, (SlNetAppPingReport_t*)&pingReport, SimpleLinkPingReport);
+    LOG_ON_ERROR (lRetVal);
 }
 
 
@@ -487,7 +587,11 @@ void* WiFi_Task(void *pvParameters)
 //    GPIO_IF_LedOff(MCU_ALL_LED_IND);
 //    GPIO_IF_LedOn(MCU_ORANGE_LED_GPIO);
 
+    sem_wait (&HAPInitSem);
+
     FillAPList ();
+    FillPingTrackSensorList ();
+
     if (ConnectToAP () == false)
         RebootMCU();
     else
@@ -509,6 +613,8 @@ void* WiFi_Task(void *pvParameters)
         }
     }
 
+    sem_post (&WiFiConnectSem);
+
 
 //    StartBlinkTimer();
 
@@ -523,24 +629,45 @@ void* WiFi_Task(void *pvParameters)
 
     g_appState = DEVICE_CONNECTED_AP;
 
-    Platform_Sleep(200);
+//    Platform_Sleep(200);
 
     int aliveSendPeriodMS = 5 * 100;
     int lastAliveSendMS = 0;
-    int jpgSendPeriodMS = 40 * 100;
+    int pingTrackPeriodMS = 2 * 100;
+    int lastPingTrackMS = 0;
+    int jpgSendPeriodMS = 420 * 100;
     int lastJpgSendMS = 0;
 //    int wifiAliveSensorIndex = 32;
+
+//    _u8 serverName1[] = HOST_NAME2;
+
+//   if (GetJpg(serverName1, 0) == false)
+//       RebootMCU();
+
+//   _u8 serverName2[] = HOST_NAME3;
+//   if (GetJpg(serverName2, 2) == false)
+//       RebootMCU();
 
     while (1)
     {
         if (SocketClientProcessRecv () < 0)
             RebootMCU();
 
+        if (sem_trywait(&btnSem) == 0)
+        {
+            UART_PRINT("btnSem\n\r");
+            lRetVal = HAPEngine_stop(HAPEngineHandle, HAPSTOPTIMEOUT);
+
+            if (lRetVal == HAPEngine_EOK)
+                sem_post(&HAPStopSem);
+        }
+
         if (messageCount == 0)
         {
             Platform_Sleep(10);
             lastAliveSendMS++;
             lastJpgSendMS++;
+            lastPingTrackMS++;
 
             if (lastAliveSendMS > aliveSendPeriodMS)
             {
@@ -549,7 +676,7 @@ void* WiFi_Task(void *pvParameters)
                 SocketClientPing();
 
                 char sensorMac [8];
-                sensorMac[0] = 0x00;
+                sensorMac[0] = 0x01;
                 sensorMac[1] = 0x12;
                 sensorMac[2] = 0x4B;
                 sensorMac[3] = 0x00;
@@ -561,19 +688,40 @@ void* WiFi_Task(void *pvParameters)
                 SocketClientSendSensorData (sensorMac, (float) g_ping, 0);
             }
 
+            if (lastPingTrackMS > pingTrackPeriodMS)
+            {
+                lastPingTrackMS = 0;
+
+                if (currPingTrackSensor != -1)
+                {
+                    SocketClientSendSensorData (pingTrackSensorList[currPingTrackSensor].sensorMac, (float) lastPingSuccess, (float) (timeSinceStartup - pingTrackSensorList [currPingTrackSensor].lastSeen));
+
+                    if (lastPingSuccess)
+                        pingTrackSensorList [currPingTrackSensor].lastSeen = timeSinceStartup;
+                }
+
+                currPingTrackSensor++;
+                if (currPingTrackSensor == pingTrackSensorListCount)
+                    currPingTrackSensor = 0;
+
+                lastPingSuccess = false;
+                lastPingIpAddress = pingTrackSensorList[currPingTrackSensor].ipAddr;
+
+                PingSmartphone (lastPingIpAddress);
+            }
+
             if (lastJpgSendMS > jpgSendPeriodMS)
             {
                 lastJpgSendMS = 0;
 
-//                if (GetJpg() == false)
-//                    RebootMCU();
+                //_u8 serverName11[] = HOST_NAME2;
 
-//                osi_Sleep(10 * 1000);
+              // if (GetJpg(serverName11, 3) == false)
+                //   RebootMCU();
 
-//                SocketClientReconnect();
-
-//                osi_Sleep(5 * 1000);
-//                RebootMCU();
+               //_u8 serverName12[] = HOST_NAME3;
+               //if (GetJpg(serverName12, 4) == false)
+                 //  RebootMCU();
             }
 
         }

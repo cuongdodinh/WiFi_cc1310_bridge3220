@@ -74,7 +74,7 @@ bool OTA_Continue (_u8 *fileBuff, _u16 partSize)
     for (s = 0; s < partSize; s++)
         fileCheckSum += fileBuff [s];
 
-//    UART_PRINT("filePos: %d   %d       %lu\n\r", filePos, partSize, fileCheckSum);
+    UART_PRINT("filePos: %d   %d       %lu\n\r", filePos, partSize, fileCheckSum);
 
     filePos += partSize;
 

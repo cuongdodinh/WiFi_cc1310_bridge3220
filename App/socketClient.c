@@ -205,6 +205,8 @@ int SocketClientProcessRecv ()
 
     recvLen = sl_Recv(iSockID, socketRecvBuff + bytesReceived, maxRecvLen, SL_MSG_DONTWAIT);
 
+//    UART_PRINT ("recvLen: %d   %d    %d\n\r", recvLen, maxRecvLen, bytesReceived);
+
     if (recvLen > 0)
     {
         bytesReceived += recvLen;
@@ -223,6 +225,12 @@ int SocketClientProcessRecv ()
             }
             //пакет пришел целиком и ровно в правильном размере
 
+            if (*((_u8*) (socketRecvBuff + HeaderOffsetsPacketNum)) != g_nextGetPacketNum) //очередность пакетов нарушена - ошибка
+            {
+                LOG_ERROR (g_nextGetPacketNum);
+                return -5;
+            }
+
             _u16 packetCRC = *((_u16*) (socketRecvBuff + HeaderOffsetsCheckSum));
 
             _u16 crc = GetCRC16 (&(socketRecvBuff [HeaderOffsetsFirstEnd]), packetLen);
@@ -230,6 +238,11 @@ int SocketClientProcessRecv ()
             {
                 UART_PRINT ("CRC Error: %d   %d\n", crc, packetCRC);
                 LOG_ERROR (crc);
+
+                char printBuff[200];
+                _u8 len = ToHexString (socketRecvBuff, MIN (bytesReceived, sizeof (printBuff) / 2), printBuff);
+                UART_PRINT("GET err: %d   %.*s\n\r", bytesReceived, len, printBuff);
+
                 return -3;
             }
 
@@ -254,11 +267,7 @@ int SocketClientProcessRecv ()
                 return -4;
             }
 
-            if (*((_u8*) (socketRecvBuff + HeaderOffsetsPacketNum)) != g_nextGetPacketNum) //очередность пакетов нарушена - ошибка
-            {
-                LOG_ERROR (g_nextGetPacketNum);
-                return -5;
-            }
+
 
             //все проверки пакета прошли успешно, обрабатываем пакет
 
@@ -273,6 +282,11 @@ int SocketClientProcessRecv ()
 
             return socketRecvBuffPacket [0];
         }
+    }
+    else if (recvLen != -11)
+    {
+        LOG_ERROR (recvLen);
+        return -5;
     }
 
     return 0;
@@ -357,7 +371,7 @@ void SocketClientProcessPingResponse(_u16 packetLen)
     PRCMRTCGet(&ulSecs, &usMsec);
 
     g_ping = ulSecs * 1000 + usMsec - lastClientTimeMS;
-    UART_PRINT("ping: %d \n\r", g_ping);
+//    UART_PRINT("ping: %d \n\r", g_ping);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -437,6 +451,8 @@ void SocketClientProcessFile(_u16 packetLen)
             break;
         }
     }
+
+//    Platform_Sleep(1000);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -542,5 +558,49 @@ void LogError (const char *pcFormat, ...)
   }
   Message(pcBuff);
   SocketClientSendLog(pcBuff, LogPart_ClientRuntime, LogType_Error);
+  free(pcBuff);
+}
+
+//*****************************************************************************
+void Log (const char *pcFormat, ...)
+{
+  int iRet = 0;
+
+  char *pcBuff, *pcTemp;
+  int iSize = 256;
+
+  va_list list;
+  pcBuff = (char*)malloc(iSize);
+  if(pcBuff == NULL)
+  {
+      return;
+  }
+  while(1)
+  {
+      va_start(list,pcFormat);
+      iRet = vsnprintf(pcBuff,iSize,pcFormat,list);
+      va_end(list);
+      if(iRet > -1 && iRet < iSize)
+      {
+          break;
+      }
+      else
+      {
+          iSize*=2;
+          if((pcTemp=realloc(pcBuff,iSize))==NULL)
+          {
+              Message("Could not reallocate memory\n\r");
+              iRet = -1;
+              break;
+          }
+          else
+          {
+              pcBuff=pcTemp;
+          }
+
+      }
+  }
+  Message(pcBuff);
+  SocketClientSendLog(pcBuff, LogPart_ClientRuntime, LogType_None);
   free(pcBuff);
 }

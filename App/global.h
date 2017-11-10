@@ -3,9 +3,10 @@
 #ifndef APP_GLOBAL_H_
 #define APP_GLOBAL_H_
 
-#define APPLICATION_VERSION     13
+#define APPLICATION_VERSION     15
 
 #include <stdbool.h>
+#include <semaphore.h>
 #include "platform.h"
 #include "uart_term.h"
 #include "netapp.h"
@@ -49,6 +50,22 @@ extern e_AppStatusCodes g_appState;
                  }\
             }
 
+#define LOG_NON_ZERO(error_code)\
+            {\
+                 if(error_code != 0) \
+                   {\
+                        ERR_LOG(error_code);\
+                 }\
+            }
+
+#define LOG_ASSERT(param)\
+            {\
+                 if(!(param)) \
+                   {\
+                        ERR_LOG(param);\
+                 }\
+            }
+
 #define LOG_ERROR(error_code)\
             {\
                         ERR_LOG(error_code);\
@@ -64,6 +81,8 @@ extern e_AppStatusCodes g_appState;
 extern bool sendInProgress;
 extern unsigned char g_buff[MAX_BUFF_SIZE+1];
 extern _u8 macAddressVal[6];
+extern sem_t HAPInitSem, HAPStopSem, WiFiConnectSem, btnSem;
+extern int timeSinceStartup;
 
 long Network_IF_GetHostIP( char* pcHostName,unsigned long * pDestinationIP );
 
