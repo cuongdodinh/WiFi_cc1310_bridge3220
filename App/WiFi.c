@@ -662,7 +662,7 @@ void* WiFi_Task(void *pvParameters)
                 sem_post(&HAPStopSem);
         }
 
-        if (messageCount == 0)
+//        if (messageCount == 0)
         {
             Platform_Sleep(10);
             lastAliveSendMS++;
@@ -725,7 +725,7 @@ void* WiFi_Task(void *pvParameters)
             }
 
         }
-        else
+//        else
         {
 
 /*            if (cloudSensors[i].cloudValueIndex1 != 0)
@@ -737,12 +737,12 @@ void* WiFi_Task(void *pvParameters)
                 osi_Sleep(200);
             }*/
 
-            if (messageIndex == MAX_MESSAGE_COUNT - 1)
+            /*if (messageIndex == MAX_MESSAGE_COUNT - 1)
                 messageIndex = 0;
             else
                 messageIndex++;
 
-            messageCount--;
+            messageCount--;*/
         }
     }
 }

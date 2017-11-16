@@ -1,5 +1,7 @@
 //26.08.17
 
+#include <pthread.h>
+
 #include "hw_types.h"
 #include "hw_memmap.h"
 #include "rom_map.h"
@@ -11,120 +13,108 @@
 #include "global.h"
 #include "appUtils.h"
 
-message_t messageBuff [MAX_MESSAGE_COUNT];
-_u8 messageCount = 0;
-_u8 messageIndex = 0;
+sem_t rxDoneSem, UARTBufferBusy;
 
 
+#define UART_TASK_STACK_SIZE    1024
+#define UART_TASK_PRIORITY      2
 
-//----------------------------------------------------------------------------------------------------------------------------------
-int GETChar(char *ucBuffer)
-{
+#define UART_PACKET_MAX_SIZE    128
+#define UART_READ_BUFFER_SIZE   1024
+#define UART_WRITE_BUFFER_SIZE  1512
 
-/*    int i=0;
-    char c;
+#define UART_PACKET_LEN_OFFSET        0
+#define UART_PACKET_SEQ_NUM_OFFSET    1
+#define UART_PACKET_CRC_OFFSET        2
+#define UART_PACKET_PAYLOAD_OFFSET    4
+
+#define UART_PACKET_MAX_PAYLOAD_SIZE    UART_PACKET_MAX_SIZE - UART_PACKET_PAYLOAD_OFFSET
+
+#define UART_EVENT_ALL                               0xFFFFFFFF
+#define UART_EVENT_RX_DONE         (_u32)(1 << 0)
 
 
-    //
-    // Wait to receive a character over UART
-    //
-    while(MAP_UARTCharsAvail(CONSOLE) == false)
-    {
-        osi_Sleep(1);
-    }
-    c = MAP_UARTCharGetNonBlocking(CONSOLE);
+#define WAIT_FOR_CONNECTION_REQUEST_TIMEOUT    100000   //in nanoseconds
+#define ACK_TIMEOUT                            1000000  //in nanoseconds
 
-    //MAP_UARTCharPut(CONSOLE, c);
-    //
-    // Checking the end of line
-    //
-    while(c!='\r')
-    {
-            *(ucBuffer+i)=c;
-            i++;
-        while(MAP_UARTCharsAvail(CONSOLE) == false)
-        {
-            osi_Sleep(1);
-        }
-        c = MAP_UARTCharGetNonBlocking(CONSOLE);
-//        MAP_UARTCharPut(CONSOLE, c);
-    }
+static _u8 localBuffer [UART_PACKET_MAX_SIZE];
+static _u8 readBuffer  [UART_READ_BUFFER_SIZE];
+static _u8 writeBuffer [UART_WRITE_BUFFER_SIZE];
+static _u8 connectionQueryByte = 0;
+static short readLen = 0;
+static _u8 readSeqNum = 0;
+static _u8 writeSeqNum = 0;
 
-//    strncpy((char*)g_ucUARTBuffer,(char *)ucBuffer,ilength);
-//    memset(g_ucUARTRecvBuffer, 0, sizeof(g_ucUARTRecvBuffer));
-    return i;*/
-    return 0;
-}
+_u16 readBufferLen = 0;
+_u16 writeBufferLen = 0;
+
+UART_Handle uart;
+
+static void ReadCallback (UART_Handle handle, void *buf, size_t count);
 
 //----------------------------------------------------------------------------------------------------------------------------------
-void UART_Task (void *pvParameters)
+void* UARTTask (void *pvParameters)
 {
-    char UARTRXBuffer [100];
-    char a;
-    int length;
-    int lengthVerify;
+    sem_init (&rxDoneSem, 0, 0);
+    sem_init (&UARTBufferBusy, 0, 0);
+    sem_post (&UARTBufferBusy);
+
+    UART_Params         uartParams;
+    UART_Params_init(&uartParams);
+
+    uartParams.writeDataMode    = UART_DATA_BINARY;
+    uartParams.readDataMode     = UART_DATA_BINARY;
+    uartParams.readReturnMode   = UART_RETURN_FULL;
+    uartParams.readEcho         = UART_ECHO_OFF;
+    uartParams.readMode         = UART_MODE_CALLBACK;
+    uartParams.readCallback     = ReadCallback;
+
+    uart = UART_open(Board_UART0, &uartParams);
+
+    if (uart == NULL)
+        RebootMCU();
+
+    struct timespec rxTimeout;
+    rxTimeout.tv_sec = 0;
+
+    UART_PRINT ("UARTTask started\n\r");
 
     while(1)
     {
-        length = GETChar(&UARTRXBuffer[0]);
+        readLen = -1;
+        UART_read (uart, &localBuffer, 1);
 
-        BlinkLED (0);
+        rxTimeout.tv_nsec = WAIT_FOR_CONNECTION_REQUEST_TIMEOUT;
 
-        lengthVerify = 0;
-        lengthVerify = HexToChar (UARTRXBuffer[0]) << 4;
-        lengthVerify |= HexToChar (UARTRXBuffer[1]);
-
-//        SendText (UARTRXBuffer, length);
-
-        if (length != lengthVerify * 2 + 4)
+        if ((sem_timedwait (&rxDoneSem, &rxTimeout) == -1) || (readLen == 0))
         {
-          //  sendError();
-//            SendText (UARTRXBuffer, length);
+            if (readLen == -1)
+            {
+                UART_readCancel (uart);
+                sem_wait (&rxDoneSem);
+            }
+            else
+                BlinkLED (0);
+        }
+        else
+        {
+            char buf[256];
+            int len = ToHexString (localBuffer, 1, buf);
+            buf [len] = 0;
 
-            continue;
+            UART_PRINT ("%s\n\r", buf);
+            UART_PRINT ("%s\n\r", localBuffer);
         }
 
-        if (messageCount < MAX_MESSAGE_COUNT)
-        {
-            _u8 newIndex = messageIndex + messageCount;
-            if (newIndex >= MAX_MESSAGE_COUNT)
-                newIndex -= MAX_MESSAGE_COUNT;
 
-            messageBuff[newIndex].UARTIndex = 0;
-            messageBuff[newIndex].UARTIndex = HexToChar (UARTRXBuffer[2]) << 4;
-            messageBuff[newIndex].UARTIndex |= HexToChar (UARTRXBuffer[3]) << 0;
-
-
-            messageBuff[newIndex].radioIndex = 0;
-            messageBuff[newIndex].radioIndex = HexToChar (UARTRXBuffer[4]) << 12;
-            messageBuff[newIndex].radioIndex |= HexToChar (UARTRXBuffer[5]) << 8;
-            messageBuff[newIndex].radioIndex |= HexToChar (UARTRXBuffer[6]) << 4;
-            messageBuff[newIndex].radioIndex |= HexToChar (UARTRXBuffer[7]) << 0;
-
-            a = 0;
-            int s;
-            for (s = 8; s < 24; s += 2)
-            {
-                messageBuff[newIndex].mac[a] = 0;
-                messageBuff[newIndex].mac[a] = HexToChar (UARTRXBuffer[s]) << 4;
-                messageBuff[newIndex].mac[a] |= HexToChar (UARTRXBuffer[s + 1]);
-                a++;
-            }
-
-            a = 0;
-            for (s = 24; s < length; s += 2)
-            {
-                messageBuff[newIndex].message[a] = 0;
-                messageBuff[newIndex].message[a] = HexToChar (UARTRXBuffer[s]) << 4;
-                messageBuff[newIndex].message[a] |= HexToChar (UARTRXBuffer[s + 1]);
-                a++;
-            }
-
-            //SendNumber ("UARTIndex", strlen ("UARTIndex"), messageBuff[newIndex].UARTIndex);
-
-            messageCount++;
-        }
-
-        BlinkLED (0);
     }
 }
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+static void ReadCallback (UART_Handle handle, void *buf, size_t count)
+{
+    readLen = count;
+
+    sem_post (&rxDoneSem);
+}
+

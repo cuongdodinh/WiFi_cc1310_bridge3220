@@ -47,7 +47,7 @@ UART_Handle InitTerm(void)
     uartParams.readEcho         = UART_ECHO_OFF;
     uartParams.baudRate         = 115200;
 
-    uartHandle = UART_open(Board_UART0, &uartParams);
+    uartHandle = UART_open(Board_UART1, &uartParams);
     /* remove uart receive from LPDS dependency */
     UART_control(uartHandle, UART_CMD_RXDISABLE, NULL);
 
