@@ -9,5 +9,6 @@
 extern UART_Handle uart;
 
 void* UARTTask (void *pvParameters);
+void UART_AddToWriteBuffer (_u8* data, _u8 len);
 
 #endif /* CC1310_INTERFACE_H_ */

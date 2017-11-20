@@ -256,7 +256,9 @@ void * mainThread( void *pvParameters )
 
     ///Platform_TimeoutStart(&pCtx->PlatformTimeout_Led, LED_TOGGLE_TIMEOUT);
 
-    GPIO_write(Board_LED0, Board_LED_ON);
+    GPIO_write(Board_LED0, Board_LED_OFF);
+    GPIO_write(Board_LED1, Board_LED_OFF);
+    GPIO_write(Board_LED2, Board_LED_OFF);
 
     GPIO_setCallback(Board_BUTTON0, gpioButtonFxn0);
 

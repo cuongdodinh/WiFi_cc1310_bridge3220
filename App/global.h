@@ -41,6 +41,7 @@ typedef enum{
 extern e_AppStatusCodes g_appState;
 
 #define ERR_LOG(x) LogError("Error [%d] at line [%d] in function [%s]  \n\r",x,__LINE__,__FUNCTION__)
+#define LOG_ERROR2(x,y) LogError("Error [%d, %d] at line [%d] in function [%s]  \n\r",x,y,__LINE__,__FUNCTION__)
 
 #define LOG_ON_ERROR(error_code)\
             {\
@@ -78,6 +79,8 @@ extern e_AppStatusCodes g_appState;
 #define _u16 unsigned short
 #define _u64 unsigned long
 
+#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+
 extern bool sendInProgress;
 extern unsigned char g_buff[MAX_BUFF_SIZE+1];
 extern _u8 macAddressVal[6];
@@ -88,5 +91,6 @@ long Network_IF_GetHostIP( char* pcHostName,unsigned long * pDestinationIP );
 
 void BlinkLED(char period);
 void RebootMCU();
+void LogError (const char *pcFormat, ...);
 
 #endif /* APP_GLOBAL_H_ */

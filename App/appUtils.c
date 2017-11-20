@@ -2,6 +2,7 @@
 
 #include <App/global.h>
 #include <App/appUtils.h>
+#include <ti/sysbios/knl/Clock.h>
 
 //----------------------------------------------------------------------------------------------------------------------------------
 char HexToChar (char b)
@@ -65,4 +66,97 @@ _u16 GetCRC16(_u8 *buf, _u16 len)
     crc ^= 0xFFFF;
 
     return crc;
+}
+
+
+#define MAX_STORED_INTERVALS 100
+
+static unsigned int startTicks;
+static int storedIntervals[MAX_STORED_INTERVALS];
+static int storedIntervalsCount = 0;
+char buffer [MAX_STORED_INTERVALS * 20];
+
+//---------------------------------------------------------------------------------------------------
+void StopwatchRestart()
+{
+    startTicks = Clock_getTicks();
+    storedIntervalsCount = 0;
+
+    memset (storedIntervals, -1, sizeof (long) * MAX_STORED_INTERVALS);
+}
+
+//---------------------------------------------------------------------------------------------------
+unsigned int StopwatchTicks()
+{
+    return Clock_getTicks() - startTicks;
+}
+
+//---------------------------------------------------------------------------------------------------
+void StopwatchStoreInterval(int index)
+{
+    if (index >= MAX_STORED_INTERVALS)
+    {
+        LOG_ERROR(index);
+        return;
+    }
+
+    storedIntervals [index] = Clock_getTicks() - startTicks;
+
+    if (index + 1 > storedIntervalsCount)
+        storedIntervalsCount = index + 1;
+}
+
+/* reverse:  переворачиваем строку s на месте */
+void reverse(char s[])
+{
+    int i, j;
+    char c;
+
+    for (i = 0, j = strlen(s)-1; i<j; i++, j--) {
+        c = s[i];
+        s[i] = s[j];
+        s[j] = c;
+    }
+}
+
+/* itoa:  конвертируем n в символы в s */
+int itoa(int n, char s[])
+{
+    int i, sign;
+
+    if ((sign = n) < 0)  /* записываем знак */
+        n = -n;          /* делаем n положительным числом */
+    i = 0;
+    do {       /* генерируем цифры в обратном порядке */
+        s[i++] = n % 10 + '0';   /* берем следующую цифру */
+    } while ((n /= 10) > 0);     /* удаляем */
+    if (sign < 0)
+        s[i++] = '-';
+    s[i] = '\0';
+    reverse(s);
+
+    return i;
+}
+
+//---------------------------------------------------------------------------------------------------
+char* StopwatchPrintStoredIntervals ()
+{
+    char* bufferPos = buffer;
+    int s;
+    for (s = 0; s < storedIntervalsCount; s++)
+    {
+        bufferPos += itoa (s, bufferPos);
+
+        *bufferPos++ = ':';
+        *bufferPos++ = ' ';
+
+        bufferPos += itoa (storedIntervals [s], bufferPos);
+
+        *bufferPos++ = ' ';
+        *bufferPos++ = ' ';
+    }
+
+    *bufferPos = 0;
+
+    return buffer;
 }

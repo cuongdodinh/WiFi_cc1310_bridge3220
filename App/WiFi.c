@@ -318,7 +318,7 @@ bool ConnectToAP ()
     SlWlanNetworkEntry_t netEntries[20];
     _i16 resultsCount;
 //    while(1)
-//    {
+    {
 
     _u8 policy = 1;
 
@@ -353,7 +353,7 @@ bool ConnectToAP ()
 
     for(s = 0; s < resultsCount; s++)
         UART_PRINT ("%s   %d\n\r", netEntries[s].Ssid, netEntries[s].Rssi);
-//    }
+    }
 
     bool connectSuccess = false;
 

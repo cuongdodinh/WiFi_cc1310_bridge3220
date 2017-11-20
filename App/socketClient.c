@@ -557,7 +557,7 @@ void LogError (const char *pcFormat, ...)
       }
   }
   Message(pcBuff);
-  SocketClientSendLog(pcBuff, LogPart_ClientRuntime, LogType_Error);
+//  SocketClientSendLog(pcBuff, LogPart_ClientRuntime, LogType_Error);
   free(pcBuff);
 }
 
