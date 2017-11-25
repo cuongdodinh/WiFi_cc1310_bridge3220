@@ -116,7 +116,7 @@ int GetSetupCodeFxn(char *setupCode, uint8_t *salt, uint8_t *verifier)
 void *HAPServer_Task(void *arg)
 {
     int status;
-    int mfiStatus;
+    int mfiStatus = -2;
     HAPEngine_AccessoryDesc *accs[4];
     HAPEngine_Params params;
 
@@ -129,7 +129,7 @@ void *HAPServer_Task(void *arg)
     /* open controller for the MFi chip */
     mfih.handle = I2C_open(CC3220SF_LAUNCHXL_I2C0, NULL);
     LOG_ASSERT (mfih.handle != NULL);
-    mfiStatus = MFiAuth_setDevice(&mfih, Board_MFI_ADDR);
+//    mfiStatus = MFiAuth_setDevice(&mfih, Board_MFI_ADDR);
 
     UART_PRINT ("MFiAuth: %d\n\r", mfiStatus);
 

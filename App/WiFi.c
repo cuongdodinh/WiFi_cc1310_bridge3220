@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include "platform.h"
 
+#include <ti/sysbios/knl/Clock.h>
+
 #include "hw_types.h"
 #include "rom_map.h"
 #include "utils.h"
@@ -533,7 +535,7 @@ void SimpleLinkPingReport(SlNetAppPingReport_t *pPingReport)
 {
         if (pPingReport->PacketsReceived > 0)
         {
-            UART_PRINT("[Ping]:  %u - %d \n\r", currPingTrackSensor, timeSinceStartup - pingTrackSensorList [currPingTrackSensor].lastSeen);
+//            UART_PRINT("[Ping]:  %u - %d \n\r", currPingTrackSensor, timeSinceStartup - pingTrackSensorList [currPingTrackSensor].lastSeen);
 
             lastPingSuccess = true;
         }
@@ -650,6 +652,8 @@ void* WiFi_Task(void *pvParameters)
 
     while (1)
     {
+        Task_sleep (1);
+
         if (SocketClientProcessRecv () < 0)
             RebootMCU();
 
@@ -664,7 +668,7 @@ void* WiFi_Task(void *pvParameters)
 
 //        if (messageCount == 0)
         {
-            Platform_Sleep(10);
+            Task_sleep (10000 / Clock_tickPeriod);
             lastAliveSendMS++;
             lastJpgSendMS++;
             lastPingTrackMS++;
@@ -673,7 +677,7 @@ void* WiFi_Task(void *pvParameters)
             {
                 lastAliveSendMS = 0;
 
-                SocketClientPing();
+                //SocketClientPing();
 
                 char sensorMac [8];
                 sensorMac[0] = 0x01;
@@ -707,7 +711,7 @@ void* WiFi_Task(void *pvParameters)
                 lastPingSuccess = false;
                 lastPingIpAddress = pingTrackSensorList[currPingTrackSensor].ipAddr;
 
-                PingSmartphone (lastPingIpAddress);
+                //PingSmartphone (lastPingIpAddress);
             }
 
             if (lastJpgSendMS > jpgSendPeriodMS)

@@ -292,12 +292,12 @@ void * mainThread( void *pvParameters )
     priParam.sched_priority = 1;
     RetVal = pthread_attr_setschedparam(&pAttrs, &priParam);
     RetVal |= pthread_attr_setstacksize(&pAttrs, TASK_STACK_SIZE);
-//    RetVal |= pthread_create(&g_WiFi_thread, &pAttrs, WiFi_Task, NULL);
+    RetVal |= pthread_create(&g_WiFi_thread, &pAttrs, WiFi_Task, NULL);
 
     LOG_NON_ZERO (RetVal);
 
     pthread_attr_init(&pAttrs);
-    priParam.sched_priority = 1;
+    priParam.sched_priority = 3;
     RetVal = pthread_attr_setschedparam(&pAttrs, &priParam);
     RetVal |= pthread_attr_setstacksize(&pAttrs, TASK_STACK_SIZE);
     RetVal |= pthread_create(&g_UART_thread, &pAttrs, UARTTask, NULL);
@@ -306,10 +306,10 @@ void * mainThread( void *pvParameters )
 
     /* Create thread for HAP server */
     pthread_attr_init(&pAttrs);
-    priParam.sched_priority = 9;
+    priParam.sched_priority = 2;
     RetVal = pthread_attr_setschedparam(&pAttrs, &priParam);
     RetVal |= pthread_attr_setstacksize(&pAttrs, (5 * 1024));
-//    RetVal |= pthread_create(&HAPServerThread, &pAttrs, HAPServer_Task, NULL);
+    RetVal |= pthread_create(&HAPServerThread, &pAttrs, HAPServer_Task, NULL);
 
     LOG_NON_ZERO (RetVal);
 

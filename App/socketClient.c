@@ -14,6 +14,7 @@
 #include "socketClient.h"
 #include "socketProtocol.h"
 #include "OTA_Update.h"
+#include "cc1310_interface.h"
 
 
 //#define SOCKET_SERVER_HOST_NAME       "192.168.2.228"
@@ -29,6 +30,7 @@ void SocketClientProcessPingResponse(_u16 packetLen);
 void SocketClientProcessAuthResponse(_u16 packetLen);
 void SocketClientLogErrorPacketType(_u16 packetLen);
 void SocketClientProcessFile(_u16 packetLen);
+void SocketClientProcessNodePacket(_u16 packetLen);
 
 /*!
  *  \brief  Function pointer to the Packet handler
@@ -38,11 +40,18 @@ typedef void (*fptr_PacketHandler)(_u16 packetLen);
 const fptr_PacketHandler packetHandlers[] =
 {
     SocketClientLogErrorPacketType,
-    SocketClientProcessAuthResponse, //PType_Auth
-    SocketClientProcessPingResponse, //PType_Ping
-    SocketClientLogErrorPacketType,  //PType_SensorData
-    SocketClientProcessFile,  //PType_File = 4,
-    SocketClientLogErrorPacketType   //PType_Log = 5
+    SocketClientProcessAuthResponse,  //PType_Auth
+    SocketClientProcessPingResponse,  //PType_Ping
+    SocketClientLogErrorPacketType,   //PType_SensorData
+    SocketClientProcessFile,          //PType_File = 4,
+    SocketClientLogErrorPacketType,   //PType_Log = 5
+    SocketClientProcessNodePacket,    //PType_NodePacket = 6
+    SocketClientLogErrorPacketType,   //
+    SocketClientLogErrorPacketType,   //
+    SocketClientLogErrorPacketType,   //
+    SocketClientLogErrorPacketType,   //
+    SocketClientLogErrorPacketType    //
+
 };
 
 _u8 socketSendBuff [MAX_BUFF_SIZE];
@@ -394,6 +403,20 @@ _u16 SocketBufferGetBytes (_u16 pos, _u8 *buff)
     memcpy (buff, socketRecvBuffPacket + pos + 2, len);
 
     return len;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void SocketClientProcessNodePacket (_u16 packetLen)
+{
+    _u8 packet [packetLen];
+
+    memcpy (&packet, socketRecvBuffPacket, packetLen);
+
+    packet [0] = UART_PACKET_TYPE_PACKET_TO_NODE; //change PacketType byte to UART_PACKET_TYPE_PACKET_TO_NODE
+
+    UART_AddToWriteBuffer (packet, packetLen);
+
+//    UART_PRINT ("SocketNodePacket: %d\n\r", packetLen);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

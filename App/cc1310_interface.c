@@ -20,32 +20,9 @@
 
 sem_t UARTBufferBusy;
 
-
-#define UART_TASK_STACK_SIZE    1024
-#define UART_TASK_PRIORITY      2
-
-#define UART_PACKET_MAX_SIZE    128
-#define UART_READ_BUFFER_SIZE   1024
-#define UART_WRITE_BUFFER_SIZE  1512
-
-#define UART_PACKET_LEN_OFFSET        0
-#define UART_PACKET_SEQ_NUM_OFFSET    1
-#define UART_PACKET_CRC_OFFSET        2
-#define UART_PACKET_PAYLOAD_OFFSET    4
-
-#define UART_PACKET_MAX_PAYLOAD_SIZE    UART_PACKET_MAX_SIZE - UART_PACKET_PAYLOAD_OFFSET
-
-#define UART_EVENT_ALL                               0xFFFFFFFF
-#define UART_EVENT_RX_DONE         (_u32)(1 << 0)
-
-
-#define RESPONCE_TIMEOUT                        507 * 1000 / Clock_tickPeriod //in uSeconds
-#define WRITE_TIMEOUT_AFTER_ERROR              1000 * 1000 / Clock_tickPeriod //in uSeconds
-
 static _u8 localBuffer [UART_PACKET_MAX_SIZE];
 static _u8 readBuffer  [UART_READ_BUFFER_SIZE];
 static _u8 writeBuffer [UART_WRITE_BUFFER_SIZE];
-static _u8 connectionQueryByte = 0;
 static _u8 readSeqNum = 0;
 static _u8 writeSeqNum = 0;
 
@@ -55,9 +32,13 @@ uint32_t lastWriteErrorTime = 0; //in ticks
 
 UART_Handle uart;
 
-static bool ReadToLocalBuffer (_u8 connectionQueryByte);
+static bool ReadPacket ();
+static bool ReadHeader ();
 static bool SendLocalBuffer (_u8 len);
-static void SendAllWriteBuffer ();
+static bool SendPacket ();
+static void FlushUARTBuffer (int period);
+static void UART_Connect ();
+static void UART_Reconnect ();
 
 //----------------------------------------------------------------------------------------------------------------------------------
 void* UARTTask (void *pvParameters)
@@ -68,6 +49,103 @@ void* UARTTask (void *pvParameters)
 
 //    UART_AddToWriteBuffer ("Replay 1", sizeof ("Replay 1"));
 
+    UART_Connect ();
+
+    UART_PRINT ("UARTTask started \n\r");
+
+    int s = 0;
+
+    while(1)
+    {
+        Task_sleep (1);
+//        UART_PRINT ("%s \n\r", StopwatchPrintStoredIntervals ());
+        StopwatchRestart();
+
+        GPIO_write(Board_LED0, Board_LED_OFF);
+        GPIO_write(Board_LED1, Board_LED_OFF);
+        StopwatchStoreInterval(0);
+
+        if (ReadHeader() == false)
+        {
+            UART_Reconnect ();
+            continue;
+        }
+
+        StopwatchStoreInterval(1);
+
+        _u8 len = localBuffer [UART_PACKET_LEN_OFFSET];
+
+        if (readBufferLen + len + 1 > UART_READ_BUFFER_SIZE)
+        {
+            UART_Reconnect ();
+
+            LOG_ERROR2 (readBufferLen, len);
+            continue;
+        }
+
+        if (ReadPacket () == true)
+        {
+            sem_wait (&UARTBufferBusy);
+
+            readBuffer [readBufferLen] = localBuffer [UART_PACKET_LEN_OFFSET];
+//            readBufferLen++;
+
+            memcpy (&readBuffer [readBufferLen], &localBuffer [UART_PACKET_PAYLOAD_OFFSET], localBuffer [UART_PACKET_LEN_OFFSET]);
+//            readBufferLen += localBuffer [UART_PACKET_LEN_OFFSET];
+
+            sem_post (&UARTBufferBusy);
+
+            _u16 crc = GetCRC16 (&localBuffer [UART_PACKET_PAYLOAD_OFFSET + 2], localBuffer [UART_PACKET_LEN_OFFSET] - 2);
+
+            if (memcmp (&crc, &localBuffer [UART_PACKET_PAYLOAD_OFFSET], 2) != 0)
+            {
+             //   UART_PRINT ("\n");
+            //    LOG_ERROR (crc);
+            }
+
+            UART_write (uart, localBuffer, UART_PACKET_HEADER_SIZE);
+
+//            if (readSeqNum % 7 == 0)
+//                continue;
+
+            if (writeBufferLen != 0)
+            {
+                if (SendPacket () == false)
+                    UART_Reconnect ();
+            }
+            else
+            {
+                _u8 zero = 0;
+
+                 UART_write (uart, &zero, 1);
+            }
+
+
+
+
+
+            _u8 buf[256];
+            sprintf ((char*) buf, "   Replay qwertyuiopasdfghjklzxcvbnm  %d", s);
+            int bufLen = strlen ((char*)buf);
+            s++;
+
+            crc = GetCRC16 (buf + 2, bufLen - 2);
+            memcpy (buf, &crc, 2);
+
+            //UART_AddToWriteBuffer (buf, bufLen);
+        }
+        else
+            UART_Reconnect ();
+
+        StopwatchStoreInterval(13);
+
+
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+static void UART_Connect ()
+{
     UART_Params         uartParams;
     UART_Params_init(&uartParams);
 
@@ -77,99 +155,66 @@ void* UARTTask (void *pvParameters)
     uartParams.readEcho         = UART_ECHO_OFF;
     uartParams.readTimeout      = RESPONCE_TIMEOUT;
 
-
     uart = UART_open(Board_UART0, &uartParams);
 
     if (uart == NULL)
         RebootMCU();
+}
 
-    UART_PRINT ("UARTTask started \n\r");
+//----------------------------------------------------------------------------------------------------------------------------------
+static void UART_Reconnect ()
+{
+    UART_PRINT ("UART_Reconnect\n\r");
 
-    while(1)
+    FlushUARTBuffer (UART_RECONNECT_PERIOD / 2);
+
+    UART_close (uart);
+
+    UART_Connect ();
+
+
+    int rxCount = 0;
+
+    unsigned int startTicks = Clock_getTicks();
+
+    while (1)
     {
-//        UART_PRINT ("%s \n\r", StopwatchPrintStoredIntervals ());
-        StopwatchRestart();
-
-        GPIO_write(Board_LED0, Board_LED_OFF);
-        GPIO_write(Board_LED1, Board_LED_OFF);
-        StopwatchStoreInterval(0);
-
-        int  rxCount;
-        rxCount = UART_read (uart, &connectionQueryByte, 1);
-
-        if (rxCount < 0)
-        {
-            LOG_ERROR (rxCount);
-            continue;
-        }
-
-        StopwatchStoreInterval(1);
+        UART_control (uart, UART_CMD_GETRXCOUNT, &rxCount);
 
         if (rxCount > 0)
-        {
-            StopwatchStoreInterval(2);
+            break;
 
-            if (connectionQueryByte & 0x80 != 0x80) //first bit must be 1 for master
-            {
-                LOG_ERROR (connectionQueryByte);
-                continue;
-            }
-            _u8 len = 0x7F & connectionQueryByte;
-
-            if (readBufferLen + len + 1 > UART_READ_BUFFER_SIZE)
-                continue;
-
-            if (ReadToLocalBuffer (len) == true)
-            {
-                readBuffer [readBufferLen] = len;
-               // readBufferLen++;
-
-                memcpy (&readBuffer [readBufferLen], &localBuffer [UART_PACKET_PAYLOAD_OFFSET], len);
-              //  readBufferLen += len;
-
-                //if (localBuffer [UART_PACKET_PAYLOAD_OFFSET] == 'T')
-                {
-                    int s;
-                    _u8 buf[256];
-
-                    for (s = 0; s < 1; s++)
-                    {
-                        //sprintf (buf, "Replay 12345678901234567890123456789012345678901234567890123456789012345678901234567890 %d", s);
-
-                        UART_AddToWriteBuffer ("Replay 12345678901234567890123456789012345678901234567890123456789012345678901234567890", strlen ("Replay 12345678901234567890123456789012345678901234567890123456789012345678901234567890"));
-                     }
-
-                }
-            }
-
-            StopwatchStoreInterval(6);
-//            UART_PRINT ("%s \n\r", StopwatchPrintStoredIntervals ());
-
-            //char buf[256];
-            //int printLen = ToHexString (&connectionQueryByte, 1, buf);
-            //buf [printLen] = 0;
-
-//            UART_PRINT ("-------------%s\n\r", buf);
-
-        }
-
-        if (rxCount == 0)
-        {
-            StopwatchStoreInterval(7);
-
-            if ((Clock_getTicks() - lastWriteErrorTime) < WRITE_TIMEOUT_AFTER_ERROR)
-                continue;
-
-            SendAllWriteBuffer ();
-            StopwatchStoreInterval(12);
-        }
-        StopwatchStoreInterval(13);
+        if (Clock_getTicks() - startTicks > UART_RECONNECT_PERIOD)
+            break;
     }
+
+    LOG_ASSERT (rxCount > 0);
+
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+static void FlushUARTBuffer (int period)
+{
+    unsigned int startTicks = Clock_getTicks();
+    _u8 buf;
+
+    int s = 0;
+    for (s = 0; s < MAX_LOOP; s++)
+    {
+        UART_read (uart, &buf, 1);
+
+        if (Clock_getTicks() - startTicks > period)
+            break;
+    }
+
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void UART_AddToWriteBuffer (_u8* data, _u8 len)
 {
+    if (len < 4)
+        LOG_ERROR (len);
+
     if (len > UART_PACKET_MAX_PAYLOAD_SIZE)
     {
         LOG_ERROR (len);
@@ -196,45 +241,6 @@ void UART_AddToWriteBuffer (_u8* data, _u8 len)
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 static bool SendLocalBuffer (_u8 len)
 {
-    _u8 connectionQueryByte = 0x80 | len; //first bit must be 1 for master
-
-    StopwatchStoreInterval(8);
-
-    UART_write (uart, &connectionQueryByte, 1);
-
-    StopwatchStoreInterval(9);
-
-    int readLen = 0;
-    int s;
-    for (s = 0; s < 4; s++)
-    {
-        readLen = UART_read (uart, &connectionQueryByte, 1);
-
-        if (readLen != 0)
-            break;
-    }
-
-
-    StopwatchStoreInterval(10);
-
-    if (readLen < 0)
-    {
-        LOG_ERROR (readLen);
-        return false;
-    }
-    if (readLen == 0)
-    {
-        LOG_ERROR (0);
-        StopwatchStoreInterval(11);
-        return false;
-    }
-
-    if (connectionQueryByte != len) //first bit must be 0 for slave
-    {
-        LOG_ERROR (connectionQueryByte);
-        return false;
-    }
-
     localBuffer[UART_PACKET_LEN_OFFSET] = len;
     localBuffer[UART_PACKET_SEQ_NUM_OFFSET] = writeSeqNum;
     writeSeqNum++;
@@ -244,30 +250,18 @@ static bool SendLocalBuffer (_u8 len)
 
     UART_write (uart, localBuffer, len + UART_PACKET_PAYLOAD_OFFSET);
 
-    _u8 ackQueryByte;
+    _u8 ackPacket [UART_PACKET_HEADER_SIZE];
 
-    for (s = 0; s < 2; s++)
-    {
-        readLen = UART_read (uart, &ackQueryByte, 1);
+    int readLen = UART_read (uart, &ackPacket, sizeof (ackPacket));
 
-        if (readLen != 0)
-            break;
-    }
-
-    if (readLen < 0)
+    if (readLen != sizeof (ackPacket))
     {
         LOG_ERROR (readLen);
         return false;
     }
-    if (readLen == 0)
+    if (memcmp (ackPacket, localBuffer, sizeof (ackPacket) - 1) != 0)
     {
-        LOG_ERROR (0);
-        return false;
-    }
-
-    if (ackQueryByte != ((localBuffer[UART_PACKET_CRC_OFFSET] + localBuffer[UART_PACKET_CRC_OFFSET + 1]) & 0x7F)) //first bit must be 0 for slave
-    {
-        LOG_ERROR (ackQueryByte);
+        LOG_ERROR (ackPacket [1]);
         return false;
     }
 
@@ -276,131 +270,126 @@ static bool SendLocalBuffer (_u8 len)
 
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-static void SendAllWriteBuffer ()
+static bool SendPacket ()
 {
+    if (writeBufferLen == 0)
+    {
+        LOG_ERROR(0);
+        return false;
+    }
+
+    GPIO_write(Board_LED0, Board_LED_ON);
+
     _u16 index = 0;
 
-     while (index < writeBufferLen)
-     {
-         sem_wait (&UARTBufferBusy);
 
-         bool packetError = false;
+    sem_wait (&UARTBufferBusy);
 
-         _u8 len = writeBuffer [index];
-         index++;
+    _u8 len = writeBuffer [index];
+    index++;
 
-         if (len > UART_PACKET_MAX_PAYLOAD_SIZE)
-         {
-             LOG_ERROR (len);
-             index += len;
-             packetError = true;
-         }
-         else if (len == 0)
-         {
-             LOG_ERROR (index);
-             packetError = true;
-         }
-         else if (index + len > writeBufferLen)
-         {
-             LOG_ERROR (index);
-             index = writeBufferLen;
-             packetError = true;
-         }
+    if (len > UART_PACKET_MAX_PAYLOAD_SIZE)
+    {
+        LOG_ERROR (len);
+        return false;
+    }
 
-         if (packetError == false)
-         {
-             memcpy (&localBuffer[UART_PACKET_PAYLOAD_OFFSET], &writeBuffer [index], len);
+    if (len == 0)
+    {
+        LOG_ERROR (index);
+        return false;
+    }
+    else if (index + len > writeBufferLen)
+    {
+        LOG_ERROR (index);
+        return false;
+    }
 
-             index += len;
-         }
+    memcpy (&localBuffer[UART_PACKET_PAYLOAD_OFFSET], &writeBuffer [index], len);
+    index += len;
 
-         if (index == writeBufferLen) //last packet was got, reset writeBuffer in thread-safe section
-         {
-             writeBufferLen = 0;
-             index = 0;
-         }
+    sem_post (&UARTBufferBusy);
 
-         sem_post (&UARTBufferBusy);
 
-         if (packetError == false)
-         {
-             GPIO_write(Board_LED0, Board_LED_ON);
 
-             if (SendLocalBuffer (len) == false)
-             {
-                 if (index == 0)
-                 {
-                     UART_AddToWriteBuffer (&localBuffer[UART_PACKET_PAYLOAD_OFFSET], len); //will try to send packet next time
-                 }
-                 else
-                 {
-                     index -= len + 1;
+    _u8 packetFullLen = len + UART_PACKET_HEADER_SIZE;
 
-                     int s;
-                     for (s = index; s < writeBufferLen; s++)
-                         writeBuffer [s - index] = writeBuffer[s];
+    UART_write (uart, &packetFullLen, 1);
 
-                     writeBufferLen -= index;
-                 }
-                 break;
-             }
-         }
-     }
+    if (SendLocalBuffer (len) == false)
+    {
+        return false;
+    }
+    else
+    {
+        sem_wait (&UARTBufferBusy);
 
+        int s;
+        for (s = index; s < writeBufferLen; s++)
+            writeBuffer [s - index] = writeBuffer[s];
+
+        writeBufferLen -= index;
+
+        sem_post (&UARTBufferBusy);
+    }
+
+    PrintBuffer ("SEND>", localBuffer, packetFullLen);
+
+
+    return true;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
-static bool ReadToLocalBuffer (_u8 len)
+static bool SafeRead (_u8* readBuffer, _u8 len, int maxReadCount)
 {
-    StopwatchStoreInterval(3);
+    int readLen = 0;
+    int readCount = 0;
+    int readResult = 0;
 
-    UART_write (uart, &len, 1); //first bit must be 0 for slave
+    while (readLen != len)
+    {
+        readResult = UART_read (uart, readBuffer + readLen, len - readLen);
 
-    StopwatchStoreInterval(4);
+        if (readResult < 0)
+        {
+            LOG_ERROR (readResult);
+            return false;
+        }
 
+        readLen += readResult;
 
+        if (readCount++ > maxReadCount)
+        {
+            LOG_ERROR2 (readLen, maxReadCount);
+
+            if (readLen != 0)
+            {
+                PrintBuffer ("Safe read err>", localBuffer, readLen + 4);
+
+            }
+            return false;
+        }
+    }
+
+    return true;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+static bool ReadHeader ()
+{
+    return SafeRead (localBuffer, UART_PACKET_HEADER_SIZE, UART_MAX_HEADER_READ_COUNT);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+static bool ReadPacket ()
+{
     GPIO_write(Board_LED1, Board_LED_ON);
 
+    _u8 len = localBuffer [UART_PACKET_LEN_OFFSET];
 
-    int readLen = 0;
-    int s;
-    for (s = 0; s < 10; s++)
-    {
-        readLen += UART_read (uart, localBuffer + readLen, len + UART_PACKET_PAYLOAD_OFFSET - readLen);
-
-        if (readLen == len + UART_PACKET_PAYLOAD_OFFSET)
-            break;
-    }
-
-    StopwatchStoreInterval(5);
-
-    if (readLen < 0)
-    {
-        LOG_ERROR (readLen);
+    if (SafeRead (&localBuffer[UART_PACKET_PAYLOAD_OFFSET], len, UART_MAX_PACKET_READ_COUNT) == false)
         return false;
-    }
-    if (readLen == 0)
-    {
-        LOG_ERROR (readLen);
-        return false;
-    }
-    if (readLen != len + UART_PACKET_PAYLOAD_OFFSET)
-    {
-        LOG_ERROR2 (readLen, len + UART_PACKET_PAYLOAD_OFFSET);
-        char buf[256];
-        int printLen = ToHexString (localBuffer, readLen, buf);
-        buf [printLen] = 0;
-        localBuffer [len + UART_PACKET_PAYLOAD_OFFSET] = 0;
 
-        UART_PRINT ("Error >%d     %s\n\r", len, buf);
-        UART_PRINT ("Error  %s\n\r",  &localBuffer[UART_PACKET_PAYLOAD_OFFSET]);
-        return false;
-    }
-    if (len != localBuffer [UART_PACKET_LEN_OFFSET])
-    {
-        LOG_ERROR2 (len, localBuffer [UART_PACKET_LEN_OFFSET]);
-        return false;
-    }
     if (readSeqNum != localBuffer [UART_PACKET_SEQ_NUM_OFFSET])
     {
         LOG_ERROR2 (readSeqNum, localBuffer [UART_PACKET_SEQ_NUM_OFFSET]);
@@ -414,28 +403,17 @@ static bool ReadToLocalBuffer (_u8 len)
         LOG_ERROR (crc);
 
         char buf[256];
-        int printLen = ToHexString (localBuffer, readLen, buf);
+        int printLen = ToHexString (localBuffer, len + UART_PACKET_HEADER_SIZE, buf);
         buf [printLen] = 0;
-        localBuffer [len + UART_PACKET_PAYLOAD_OFFSET] = 0;
+        localBuffer [len + UART_PACKET_HEADER_SIZE] = 0;
 
         UART_PRINT ("crc error >%d   %d   %s    %s\r\n", len, crc, buf, &localBuffer[UART_PACKET_PAYLOAD_OFFSET]);
         return false;
     }
 
-//    if (readSeqNum % 10 == 0)
-//        return;
+    if (localBuffer [UART_PACKET_PACKET_TYPE_OFFSET] != UART_PACKET_TYPE_ALIVE)
+        PrintBuffer ("READ<", localBuffer, len + UART_PACKET_HEADER_SIZE);
 
-    _u8 ack = ((localBuffer[UART_PACKET_CRC_OFFSET] + localBuffer[UART_PACKET_CRC_OFFSET + 1]) & 0x7F);
-
-    UART_write (uart, &ack, 1); //first bit must be 0 for slave
-
-    char buf[256];
-    int printLen = ToHexString (localBuffer, readLen, buf);
-    buf [printLen] = 0;
-    localBuffer [len + UART_PACKET_PAYLOAD_OFFSET] = 0;
-
-    UART_PRINT (">%d   %d   %s    %s\r", len, crc, buf, &localBuffer[UART_PACKET_PAYLOAD_OFFSET]);
-//    Task_sleep (100);
 
     return true;
 }

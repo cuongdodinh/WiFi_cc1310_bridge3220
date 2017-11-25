@@ -94,16 +94,16 @@ void LED_init(void)
 {
     led_instance.curPower = false;
     strncpy(led_instance.curName, "led", MAXNAME);
-    GPIO_write(Board_GPIO_LED0, Board_GPIO_LED_OFF);
+    GPIO_write(Board_GPIO_LED2, Board_GPIO_LED_OFF);
 }
 
 void LED_restoreState(void)
 {
     if (led_instance.curPower == true) {
-        GPIO_write(Board_GPIO_LED0, Board_GPIO_LED_ON);
+        GPIO_write(Board_GPIO_LED2, Board_GPIO_LED_ON);
     }
     else {
-        GPIO_write(Board_GPIO_LED0, Board_GPIO_LED_OFF);
+        GPIO_write(Board_GPIO_LED2, Board_GPIO_LED_OFF);
     }
 }
 #include <ti/hap/ip/HAPEngine.h>
@@ -114,7 +114,7 @@ static HAPEngine_SrvStatus setPower(unsigned int aId,
     HAPEngine_CDescPtr cDesc, bool value)
 {
     bool curPower;
-    if (GPIO_read(Board_GPIO_LED0)) {
+    if (GPIO_read(Board_GPIO_LED2)) {
         curPower = true;
     }
     else{
@@ -125,10 +125,10 @@ static HAPEngine_SrvStatus setPower(unsigned int aId,
         HAPEngine_SrvStatus_EOKNOCHANGE : HAPEngine_SrvStatus_EOK;
 
     if ((value == true) && (result != HAPEngine_SrvStatus_EOKNOCHANGE)) {
-        GPIO_write(Board_GPIO_LED0, Board_GPIO_LED_ON);
+        GPIO_write(Board_GPIO_LED2, Board_GPIO_LED_ON);
     }
     else if (result != HAPEngine_SrvStatus_EOKNOCHANGE) {
-        GPIO_write(Board_GPIO_LED0, Board_GPIO_LED_OFF);
+        GPIO_write(Board_GPIO_LED2, Board_GPIO_LED_OFF);
     }
     led_instance.curPower = value;
 
@@ -147,7 +147,7 @@ static HAPEngine_SrvStatus setPower(unsigned int aId,
 static HAPEngine_SrvStatus getPower(unsigned int aId,
     HAPEngine_CDescPtr cDesc, bool *value)
 {
-    if (GPIO_read(Board_GPIO_LED0)) {
+    if (GPIO_read(Board_GPIO_LED2)) {
         *value = true;
     }
     else {

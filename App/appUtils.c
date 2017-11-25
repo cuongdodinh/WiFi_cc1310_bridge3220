@@ -16,7 +16,7 @@ char HexToChar (char b)
 char hex [16] = "0123456789ABCDEF";
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-_u8 ToHexString (_u8* byteArrayBuff, _u8 len, char* hexStringBuff)
+_u8 ToHexString (const _u8* byteArrayBuff, _u8 len, char* hexStringBuff)
 {
     int s;
     int len2 = len * 2;
@@ -52,6 +52,17 @@ void MakeCRC16Table(void)
     }
      crcTable[s] = r;
    }
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+void PrintBuffer (char* header, _u8 *buffToPrint, _u8 len)
+{
+    char buf[256];
+    int printLen = ToHexString (buffToPrint, len, buf);
+    buf [printLen] = 0;
+
+    UART_PRINT ("%s", header);
+    UART_PRINT ("%d   %s\r\n", len, buf);
 }
 
 //--------------------------------------------------------------------------------------------------------------------------

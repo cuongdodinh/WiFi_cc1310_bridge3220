@@ -17,7 +17,8 @@ enum PacketTypes {
     PType_Ping = 2,
     PType_SensorData = 3,
     PType_File = 4,
-    PType_Log = 5
+    PType_Log = 5,
+    PType_NodePacket = 6
 };
 
 enum PacketSubTypes {
