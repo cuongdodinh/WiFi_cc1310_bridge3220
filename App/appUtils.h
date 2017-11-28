@@ -9,6 +9,8 @@ _u8 ToHexString (const _u8* byteArrayBuff, _u8 len, char* hexStringBuff);
 void MakeCRC16Table(void);
 _u16 GetCRC16(_u8 *buf, _u16 len);
 void PrintBuffer (char* header, _u8 *buffToPrint, _u8 len);
+void ShiftByteArray (_u8* data, _u16 dataLen, _u16 shiftLen);
+
 
 void StopwatchRestart();
 long StopwatchNanoseconds();

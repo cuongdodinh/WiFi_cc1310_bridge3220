@@ -3,7 +3,7 @@
 #ifndef APP_GLOBAL_H_
 #define APP_GLOBAL_H_
 
-#define APPLICATION_VERSION     15
+#define APPLICATION_VERSION     16
 
 #include <stdbool.h>
 #include <semaphore.h>
@@ -40,14 +40,15 @@ typedef enum{
 
 extern e_AppStatusCodes g_appState;
 
-#define ERR_LOG(x) LogError("Error [%d] at line [%d] in function [%s]  \n\r",x,__LINE__,__FUNCTION__)
+#define LOG_ERR() LogError("Error at line [%d] in function [%s]  \n\r",__LINE__,__FUNCTION__)
+#define LOG_ERROR(x) LogError("Error [%d] at line [%d] in function [%s]  \n\r",x,__LINE__,__FUNCTION__)
 #define LOG_ERROR2(x,y) LogError("Error [%d, %d] at line [%d] in function [%s]  \n\r",x,y,__LINE__,__FUNCTION__)
 
 #define LOG_ON_ERROR(error_code)\
             {\
                  if(error_code < 0) \
                    {\
-                        ERR_LOG(error_code);\
+                     LOG_ERROR(error_code);\
                  }\
             }
 
@@ -55,7 +56,7 @@ extern e_AppStatusCodes g_appState;
             {\
                  if(error_code != 0) \
                    {\
-                        ERR_LOG(error_code);\
+                     LOG_ERROR(error_code);\
                  }\
             }
 
@@ -63,14 +64,10 @@ extern e_AppStatusCodes g_appState;
             {\
                  if(!(param)) \
                    {\
-                        ERR_LOG(param);\
+                     LOG_ERROR(param);\
                  }\
             }
 
-#define LOG_ERROR(error_code)\
-            {\
-                        ERR_LOG(error_code);\
-            }
 //TODO: DELETE******************************************/////////~~~~~~~~~~~~~~~
 #define MAX_BUFF_SIZE           1460
 #define SUCCESS                 0
@@ -80,6 +77,8 @@ extern e_AppStatusCodes g_appState;
 #define _u64 unsigned long
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+
+#define MAX_LOOP                 1000
 
 extern bool sendInProgress;
 extern unsigned char g_buff[MAX_BUFF_SIZE+1];

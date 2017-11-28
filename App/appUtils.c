@@ -79,6 +79,25 @@ _u16 GetCRC16(_u8 *buf, _u16 len)
     return crc;
 }
 
+void ShiftByteArray (_u8* data, _u16 dataLen, _u16 shiftLen)
+{
+    if (shiftLen == dataLen)
+        return;
+
+    if (shiftLen == 0)
+        return;
+
+    if (shiftLen > dataLen)
+    {
+        LOG_ERROR2 (shiftLen, dataLen);
+        return;
+    }
+
+    int s;
+    for (s = shiftLen; s < dataLen; s++)
+        data [s - shiftLen] = data[s];
+}
+
 
 #define MAX_STORED_INTERVALS 100
 

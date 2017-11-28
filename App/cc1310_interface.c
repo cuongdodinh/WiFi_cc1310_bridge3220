@@ -17,11 +17,12 @@
 #include "cc1310_interface.h"
 #include "global.h"
 #include "appUtils.h"
+#include "socketClient.h"
 
-sem_t UARTBufferBusy;
+static sem_t UARTBufferBusy;
 
 static _u8 localBuffer [UART_PACKET_MAX_SIZE];
-static _u8 readBuffer  [UART_READ_BUFFER_SIZE];
+static _u8 readBuffer  [UART_PACKET_MAX_SIZE];
 static _u8 writeBuffer [UART_WRITE_BUFFER_SIZE];
 static _u8 readSeqNum = 0;
 static _u8 writeSeqNum = 0;
@@ -39,13 +40,18 @@ static bool SendPacket ();
 static void FlushUARTBuffer (int period);
 static void UART_Connect ();
 static void UART_Reconnect ();
+static void ProcessPacket ();
+
+//----------------------------------------------------------------------------------------------------------------------------------
+void UARTTaskInit ()
+{
+    sem_init (&UARTBufferBusy, 0, 0);
+    sem_post (&UARTBufferBusy);
+}
 
 //----------------------------------------------------------------------------------------------------------------------------------
 void* UARTTask (void *pvParameters)
 {
-    sem_init (&UARTBufferBusy, 0, 0);
-    sem_post (&UARTBufferBusy);
-
 
 //    UART_AddToWriteBuffer ("Replay 1", sizeof ("Replay 1"));
 
@@ -53,7 +59,6 @@ void* UARTTask (void *pvParameters)
 
     UART_PRINT ("UARTTask started \n\r");
 
-    int s = 0;
 
     while(1)
     {
@@ -73,35 +78,29 @@ void* UARTTask (void *pvParameters)
 
         StopwatchStoreInterval(1);
 
-        _u8 len = localBuffer [UART_PACKET_LEN_OFFSET];
-
-        if (readBufferLen + len + 1 > UART_READ_BUFFER_SIZE)
-        {
-            UART_Reconnect ();
-
-            LOG_ERROR2 (readBufferLen, len);
-            continue;
-        }
-
         if (ReadPacket () == true)
         {
-            sem_wait (&UARTBufferBusy);
 
-            readBuffer [readBufferLen] = localBuffer [UART_PACKET_LEN_OFFSET];
-//            readBufferLen++;
+            _u8 len = localBuffer [UART_PACKET_LEN_OFFSET];
 
-            memcpy (&readBuffer [readBufferLen], &localBuffer [UART_PACKET_PAYLOAD_OFFSET], localBuffer [UART_PACKET_LEN_OFFSET]);
-//            readBufferLen += localBuffer [UART_PACKET_LEN_OFFSET];
+            if (len > UART_READ_BUFFER_SIZE)
+            {
+                UART_Reconnect ();
 
-            sem_post (&UARTBufferBusy);
+                LOG_ERROR (len);
+                continue;
+            }
 
-            _u16 crc = GetCRC16 (&localBuffer [UART_PACKET_PAYLOAD_OFFSET + 2], localBuffer [UART_PACKET_LEN_OFFSET] - 2);
+            memcpy (&readBuffer, &localBuffer [UART_PACKET_PAYLOAD_OFFSET], len);
+            readBufferLen = len;
+
+/*            _u16 crc = GetCRC16 (&localBuffer [UART_PACKET_PAYLOAD_OFFSET + 2], localBuffer [UART_PACKET_LEN_OFFSET] - 2);
 
             if (memcmp (&crc, &localBuffer [UART_PACKET_PAYLOAD_OFFSET], 2) != 0)
             {
-             //   UART_PRINT ("\n");
-            //    LOG_ERROR (crc);
-            }
+                UART_PRINT ("\n");
+                LOG_ERROR (crc);
+            }*/
 
             UART_write (uart, localBuffer, UART_PACKET_HEADER_SIZE);
 
@@ -120,11 +119,9 @@ void* UARTTask (void *pvParameters)
                  UART_write (uart, &zero, 1);
             }
 
+            ProcessPacket();
 
-
-
-
-            _u8 buf[256];
+/*            _u8 buf[256];
             sprintf ((char*) buf, "   Replay qwertyuiopasdfghjklzxcvbnm  %d", s);
             int bufLen = strlen ((char*)buf);
             s++;
@@ -132,7 +129,7 @@ void* UARTTask (void *pvParameters)
             crc = GetCRC16 (buf + 2, bufLen - 2);
             memcpy (buf, &crc, 2);
 
-            //UART_AddToWriteBuffer (buf, bufLen);
+            UART_AddToWriteBuffer (buf, bufLen);*/
         }
         else
             UART_Reconnect ();
@@ -141,6 +138,28 @@ void* UARTTask (void *pvParameters)
 
 
     }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+static void ProcessPacket ()
+{
+   switch (readBuffer[0])
+   {
+    case UART_PACKET_TYPE_PACKET_FROM_NODE:
+    case UART_PACKET_TYPE_BRIDGE_ERROR:
+    case UART_PACKET_TYPE_PACKET_TO_NODE_ACK:
+
+        SocketClientSendNodePacket(readBuffer, readBufferLen);
+        break;
+
+    case UART_PACKET_TYPE_ALIVE:
+        break;
+
+    default:
+        LOG_ERROR(readBuffer [0]);
+
+   }
+
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------

@@ -22,9 +22,6 @@
 #define UART_PACKET_HEADER_SIZE      UART_PACKET_PAYLOAD_OFFSET
 #define UART_PACKET_MAX_PAYLOAD_SIZE    UART_PACKET_MAX_SIZE - UART_PACKET_PAYLOAD_OFFSET
 
-#define MAX_LOOP                 1000
-
-
 
 #define UART_EVENT_ALL                               0xFFFFFFFF
 #define UART_EVENT_RX_DONE         (_u32)(1 << 0)
@@ -46,6 +43,7 @@
 
 extern UART_Handle uart;
 
+void UARTTaskInit ();
 void* UARTTask (void *pvParameters);
 void UART_AddToWriteBuffer (_u8* data, _u8 len);
 

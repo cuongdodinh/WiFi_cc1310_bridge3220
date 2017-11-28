@@ -267,6 +267,9 @@ void * mainThread( void *pvParameters )
     sem_init(&WiFiConnectSem, 0, 0);
     sem_init(&btnSem, 0, 0);
 
+    UARTTaskInit ();
+
+    SocketClientInit ();
 
     /* init Terminal, and print App name */
     InitTerm();

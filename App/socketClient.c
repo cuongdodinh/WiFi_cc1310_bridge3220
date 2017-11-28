@@ -2,6 +2,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <ti/sysbios/knl/Clock.h>
+
 #include "global.h"
 #include "simplelink.h"
 //#include "network_if.h"
@@ -54,12 +57,14 @@ const fptr_PacketHandler packetHandlers[] =
 
 };
 
-_u8 socketSendBuff [MAX_BUFF_SIZE];
-_u8 socketRecvBuff [MAX_BUFF_SIZE];
-_u8 *socketRecvBuffPacket = socketRecvBuff + HeaderOffsetsSecondEnd;
-_u8 g_nextGetPacketNum = 0;
-_u8 nextSendPacketNum = 0;
-int iSockID;
+static _u8 socketSendBuff [MAX_BUFF_SIZE];
+static _u8 socketSendQueueBuff [SOCKET_SEND_QUEUE_BUFF_SIZE + SocketClient_AddToSendBuffer_OverlfowErrorPacketSize];
+static short socketSendQueueBuffLen = 0;
+static _u8 socketRecvBuff [MAX_BUFF_SIZE];
+static _u8 *socketRecvBuffPacket = socketRecvBuff + HeaderOffsetsSecondEnd;
+static _u8 g_nextGetPacketNum = 0;
+static _u8 nextSendPacketNum = 0;
+static int iSockID = -1;
 _u16 g_ping = 0;
 
 SlSockAddrIn_t  sAddr;
@@ -68,7 +73,111 @@ int             iAddrSize = sizeof(SlSockAddrIn_t);
 unsigned long ulSecs;
 unsigned short usMsec;
 
+static sem_t socketSendQueueBuffBusy, socketSendPacketBusy;
+
 bool SocketClientAuth();
+
+//----------------------------------------------------------------------------------------------------------------------------------
+void SocketClientInit ()
+{
+    sem_init (&socketSendQueueBuffBusy, 0, 0);
+    sem_post (&socketSendQueueBuffBusy);
+
+    sem_init (&socketSendPacketBusy, 0, 0);
+    sem_post (&socketSendPacketBusy);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+bool SocketClient_AddToSendBuffer (_u8* data, _u8 len)
+{
+    if (socketSendQueueBuffLen + len + 1 > SOCKET_SEND_QUEUE_BUFF_SIZE)
+    {
+        char errorText[] = SocketClient_AddToSendBuffer_OverlfowErrorPacketText;
+        if ((len != SocketClient_AddToSendBuffer_OverlfowErrorPacketSize) || (memcmp (data + 4, errorText, len - 4) != 0)) //this is not overflow error packet
+        {
+            SocketClientSendLog(errorText, LogPart_ClientRuntime, LogType_Error);
+            return false;
+        }
+    }
+
+    if (socketSendQueueBuffLen + len + 1 > SOCKET_SEND_QUEUE_BUFF_SIZE + SocketClient_AddToSendBuffer_OverlfowErrorPacketSize)
+        return false;
+
+    sem_wait (&socketSendQueueBuffBusy);
+
+    socketSendQueueBuff [socketSendQueueBuffLen] = len;
+    socketSendQueueBuffLen++;
+
+    memcpy (&socketSendQueueBuff [socketSendQueueBuffLen], data, len);
+    socketSendQueueBuffLen += len;
+
+    sem_post (&socketSendQueueBuffBusy);
+
+    return true;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+bool SocketClientProcessSend()
+{
+    if (iSockID == -1)
+    {
+        LOG_ERR();
+        return false;
+    }
+
+    int loop;
+    int len;
+
+    for (loop = 0; loop < MAX_LOOP; loop++)
+    {
+        sem_wait (&socketSendQueueBuffBusy);
+
+        if (socketSendQueueBuffLen == 0)
+        {
+            sem_post (&socketSendQueueBuffBusy);
+            break;
+        }
+
+        len = socketSendQueueBuff[0];
+
+        if (len + 1 > socketSendQueueBuffLen)
+        {
+            LOG_ERROR2 (len, socketSendQueueBuffLen);
+            sem_post (&socketSendQueueBuffBusy);
+            break;
+        }
+
+        memcpy (&socketSendBuff [HeaderOffsetsSecondEnd], &socketSendQueueBuff[1], len);
+
+        sem_post (&socketSendQueueBuffBusy);
+
+        if (SocketClientSendPacket (socketSendBuff, HeaderOffsetsSecondEnd + len) == true)
+        {
+            sem_wait (&socketSendQueueBuffBusy);
+
+            ShiftByteArray (socketSendQueueBuff, socketSendQueueBuffLen, len + 1);
+            socketSendQueueBuffLen -= len + 1;
+
+            sem_post (&socketSendQueueBuffBusy);
+        }
+        else
+        {
+            LOG_ERR();
+//            SocketClientReconnect ();
+            return false;
+        }
+
+
+    }
+
+    if (loop == MAX_LOOP)
+    {
+        LOG_ERR();
+        return false;
+    }
+
+    return true;
+}
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 bool SocketClientConnect ()
@@ -111,7 +220,7 @@ bool SocketClientConnect ()
      {
          g_appState = SERVER_CONNECTION_ERROR;
 
-         sl_Close(iSockID);
+         SocketClientDisconnect ();
          UART_PRINT("SOCKET_CONNECT_ERROR %d \n\r",lRetVal);
          return false;
      }
@@ -140,12 +249,13 @@ bool SocketClientConnect ()
 void SocketClientDisconnect ()
 {
     sl_Close(iSockID);
+    iSockID = -1;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 void SocketClientReconnect ()
 {
-    sl_Close(iSockID);
+    SocketClientDisconnect ();
 
     SocketClientConnect ();
 
@@ -156,6 +266,12 @@ void SocketClientReconnect ()
 //--------------------------------------------------------------------------------------------------------------------------
 bool SocketClientSendPacket (_u8 *socketSendBuff, int packetLen)
 {
+    if (sem_trywait (&socketSendPacketBusy) != 0)
+    {
+        LOG_ERR();
+        sem_wait (&socketSendPacketBusy);
+    }
+
     _u16 packetCRC;
 
     _u16 clearPacketLen = packetLen - HeaderOffsetsFirstEnd;
@@ -179,13 +295,15 @@ bool SocketClientSendPacket (_u8 *socketSendBuff, int packetLen)
     int lRetVal = sl_Send(iSockID, socketSendBuff, packetLen, 0 );
     if( lRetVal < 0 )
     {
-        UART_PRINT("SendPacket(): sending packet_ERROR %d \n\r",lRetVal);
+        LOG_ERROR2 (lRetVal, packetLen);
 //        SocketClientReconnect ();
 //        RebootMCU();
 
+        sem_post (&socketSendPacketBusy);
         return false;
     }
 
+    sem_post (&socketSendPacketBusy);
     return true;
 }
 
@@ -286,6 +404,12 @@ int SocketClientProcessRecv ()
             _u8 len = ToHexString (socketRecvBuff, MIN (bytesReceived, sizeof (printBuff) / 2), printBuff);
             UART_PRINT("GET: %d   %.*s\n\r", bytesReceived, len, printBuff);
 
+            if (socketRecvBuffPacket [0] >= sizeof (packetHandlers) / sizeof (packetHandlers[0]))
+            {
+                LOG_ERROR (socketRecvBuffPacket [0] );
+                return -6;
+            }
+
             packetHandlers [socketRecvBuffPacket [0]] (packetLen - HeaderOffsetsSecondEnd + HeaderOffsetsFirstEnd);
             bytesReceived = 0;
 
@@ -310,9 +434,8 @@ bool SocketClientAuth()
 
     if (SocketClientSendPacket (socketSendBuff, HeaderOffsetsSecondEnd + 3) == false)
     {
-        // error
-        UART_PRINT("SocketClientAuth sending packet_ERROR\n\r");
-//        SocketClientReconnect ();
+        LOG_ERR();
+        return false;
     }
 
     int s;
@@ -331,7 +454,7 @@ bool SocketClientAuth()
                 return false;
         }
 
-        Platform_Sleep(10);
+        Task_sleep (10000 / Clock_tickPeriod);
     }
 
     return false;
@@ -351,19 +474,13 @@ bool SocketClientPing()
 
     _u32 clientTimeMS = ulSecs * 1000 + usMsec;
 
-    socketSendBuff [HeaderOffsetsSecondEnd] = PType_Ping;
-    memcpy (&socketSendBuff [HeaderOffsetsSecondEnd + 1], &clientTimeMS, 4);
-    memcpy (&socketSendBuff [HeaderOffsetsSecondEnd + 5], &g_ping, 2);
+    _u8 packetBuffer [7];
 
-    if (SocketClientSendPacket (socketSendBuff, HeaderOffsetsSecondEnd + 7) == false)
-    {
-        // error
-        UART_PRINT("SocketClientSendPing sending packet_ERROR\n\r");
-        SocketClientReconnect ();
-        return false;
-    }
+    packetBuffer [0] = PType_Ping;
+    memcpy (&packetBuffer [1], &clientTimeMS, 4);
+    memcpy (&packetBuffer [5], &g_ping, 2);
 
-    return true;
+    return SocketClient_AddToSendBuffer (packetBuffer, sizeof (packetBuffer));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -481,44 +598,45 @@ void SocketClientProcessFile(_u16 packetLen)
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 bool SocketClientSendLog(char* text, _u8 logPart, _u8 logType)
 {
-    socketSendBuff [HeaderOffsetsSecondEnd] = PType_Log;
-    socketSendBuff [HeaderOffsetsSecondEnd + 1] = logPart;
-    socketSendBuff [HeaderOffsetsSecondEnd + 2] = logType;
+    _u8 len = strlen (text);
+    _u8 packetBuffer [4 + len];
 
-    socketSendBuff [HeaderOffsetsSecondEnd + 3] = strlen (text);
+    packetBuffer [0] = PType_Log;
+    packetBuffer [1] = logPart;
+    packetBuffer [2] = logType;
 
-    memcpy (&socketSendBuff [HeaderOffsetsSecondEnd + 4], text, strlen (text));
+    packetBuffer [3] = len;
 
-    if (SocketClientSendPacket (socketSendBuff, HeaderOffsetsSecondEnd + 4 + strlen (text)) == false)
-    {
-        // error
-        UART_PRINT("SocketClientSendLog sending packet_ERROR\n\r");
-        return false;
- //       SocketClientReconnect ();
-    }
+    memcpy (&packetBuffer[4], text, len);
 
-    return true;
+    return SocketClient_AddToSendBuffer (packetBuffer, sizeof (packetBuffer));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+bool SocketClientSendNodePacket(_u8* data, _u8 len)
+{
+    _u8 packetBuffer [1 + len];
+
+    packetBuffer [0] = PType_NodePacket;
+
+    memcpy (&packetBuffer[1], data, len);
+
+    return SocketClient_AddToSendBuffer (packetBuffer, sizeof (packetBuffer));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 bool SocketClientSendSensorData (char* sensorMac, float sensorValue1, float sensorValue2)
 {
-    socketSendBuff [HeaderOffsetsSecondEnd] = PType_SensorData;
+    _u8 packetBuffer [17];
 
-    memcpy (&socketSendBuff [HeaderOffsetsSecondEnd + 1], sensorMac, 8);
+    packetBuffer [0] = PType_SensorData;
 
-    memcpy (&socketSendBuff [HeaderOffsetsSecondEnd + 9], &sensorValue1, 4);
-    memcpy (&socketSendBuff [HeaderOffsetsSecondEnd + 13], &sensorValue2, 4);
+    memcpy (&packetBuffer [1], sensorMac, 8);
 
-    if (SocketClientSendPacket (socketSendBuff, HeaderOffsetsSecondEnd + 17) == false)
-    {
-        // error
-        UART_PRINT("SocketClientSendSensorData sending packet_ERROR\n\r");
-        return false;
- //       SocketClientReconnect ();
-    }
+    memcpy (&packetBuffer [9], &sensorValue1, 4);
+    memcpy (&packetBuffer [13], &sensorValue2, 4);
 
-    return true;
+    return SocketClient_AddToSendBuffer (packetBuffer, sizeof (packetBuffer));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -580,7 +698,7 @@ void LogError (const char *pcFormat, ...)
       }
   }
   Message(pcBuff);
-//  SocketClientSendLog(pcBuff, LogPart_ClientRuntime, LogType_Error);
+  SocketClientSendLog(pcBuff, LogPart_ClientRuntime, LogType_Error);
   free(pcBuff);
 }
 

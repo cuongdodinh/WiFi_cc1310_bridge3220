@@ -484,7 +484,7 @@ void RebootMCU()
 }
 
 static bool lastPingSuccess = false;
-static int32_t lastPingIpAddress = 0;
+//static int32_t lastPingIpAddress = 0;
 
 typedef struct pingTrackSensor {
     int32_t ipAddr;
@@ -657,6 +657,8 @@ void* WiFi_Task(void *pvParameters)
         if (SocketClientProcessRecv () < 0)
             RebootMCU();
 
+        SocketClientProcessSend();
+
         if (sem_trywait(&btnSem) == 0)
         {
             UART_PRINT("btnSem\n\r");
@@ -677,9 +679,9 @@ void* WiFi_Task(void *pvParameters)
             {
                 lastAliveSendMS = 0;
 
-                //SocketClientPing();
+                SocketClientPing();
 
-                char sensorMac [8];
+                /*char sensorMac [8];
                 sensorMac[0] = 0x01;
                 sensorMac[1] = 0x12;
                 sensorMac[2] = 0x4B;
@@ -689,7 +691,7 @@ void* WiFi_Task(void *pvParameters)
                 sensorMac[6] = 0xAE;
                 sensorMac[7] = 0x44;
 
-                SocketClientSendSensorData (sensorMac, (float) g_ping, 0);
+                SocketClientSendSensorData (sensorMac, (float) g_ping, 0);*/
             }
 
             if (lastPingTrackMS > pingTrackPeriodMS)
@@ -698,7 +700,7 @@ void* WiFi_Task(void *pvParameters)
 
                 if (currPingTrackSensor != -1)
                 {
-                    SocketClientSendSensorData (pingTrackSensorList[currPingTrackSensor].sensorMac, (float) lastPingSuccess, (float) (timeSinceStartup - pingTrackSensorList [currPingTrackSensor].lastSeen));
+                    //SocketClientSendSensorData (pingTrackSensorList[currPingTrackSensor].sensorMac, (float) lastPingSuccess, (float) (timeSinceStartup - pingTrackSensorList [currPingTrackSensor].lastSeen));
 
                     if (lastPingSuccess)
                         pingTrackSensorList [currPingTrackSensor].lastSeen = timeSinceStartup;
@@ -709,7 +711,7 @@ void* WiFi_Task(void *pvParameters)
                     currPingTrackSensor = 0;
 
                 lastPingSuccess = false;
-                lastPingIpAddress = pingTrackSensorList[currPingTrackSensor].ipAddr;
+                //lastPingIpAddress = pingTrackSensorList[currPingTrackSensor].ipAddr;
 
                 //PingSmartphone (lastPingIpAddress);
             }
